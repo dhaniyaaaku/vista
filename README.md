@@ -115,5 +115,3 @@ accounts land changes one file.
 In progress. Working: data model, cadence logic, polar layout with automated verification, and the
 3D city with a working time scrubber. Next: night lighting, the butterfly cursor, hover-to-remember,
 and the log form.
-
-See [PLAN.md](PLAN.md) for the full spec and build plan.

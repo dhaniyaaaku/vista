@@ -15,6 +15,9 @@ dist-ssr
 # Dev screenshots from scripts/shot.mjs
 shots
 
+# Private build spec — kept local, deliberately not published
+PLAN.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
