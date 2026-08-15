@@ -1,10 +1,9 @@
 /**
  * The 3D city.
  *
- * Grey-box phase: correct geometry in correct places, no materials or lighting worth the name.
  * Everything here is driven from `CityLayout`, which is already verified in 2D — if something
- * looks wrong on screen, check the 2D debug view first to find out whether it is a layout problem
- * or a render problem.
+ * looks wrong on screen, check `?debug2d` first to find out whether it is a layout problem or a
+ * render problem.
  *
  * Buildings are drawn with InstancedMesh, one per structure kind. Instance index is mapped back to
  * the originating entry so the butterfly can raycast a building and recover the memory attached
@@ -14,16 +13,26 @@
 import * as THREE from 'three';
 import type { StructureKind } from '../data/types';
 import type { CityLayout, Placement, TowerPlacement } from '../layout/polar';
+import {
+  makeBuildingMaterial,
+  makeInstallationMaterial,
+  makeQuietMaterial,
+  makeWindowTexture,
+  tintFor,
+} from './materials';
 
 /**
  * World height of one skyscraper floor.
  *
- * Stays linear — one completion is one floor, exactly as promised — but small, because six months
- * of a daily habit is ~150 floors and anything taller than this turns the tower into a needle that
+ * Stays linear — one completion is one floor, exactly as promised — but small, because eighteen
+ * months of a daily habit is ~450 floors and anything taller turns the tower into a needle that
  * pierces the frame and flattens everything else.
  */
-export const FLOOR_HEIGHT = 0.18;
-export const TOWER_FOOTPRINT = 3.6;
+export const FLOOR_HEIGHT = 0.11;
+export const TOWER_FOOTPRINT = 3.4;
+
+/** Which shared material a structure kind draws with. */
+type MaterialKey = 'building' | 'quiet' | 'installation';
 
 export interface PickTarget {
   kind: 'entry' | 'tower';
@@ -38,6 +47,7 @@ export interface PickTarget {
 
 interface KindSpec {
   geometry: () => THREE.BufferGeometry;
+  material: MaterialKey;
   /** Base footprint, before per-building variation. */
   footprint: number;
   height: (variation: number) => number;
@@ -48,61 +58,81 @@ interface KindSpec {
 const KIND_SPECS: Record<StructureKind, KindSpec> = {
   skyscraper: {
     geometry: () => new THREE.BoxGeometry(1, 1, 1),
+    material: 'building',
     footprint: TOWER_FOOTPRINT,
     height: () => 1,
   },
+  // Heights are deliberately large relative to the plot. A dense forest of slender towers is what
+  // makes an aerial night city read as a city; low blocks at this spacing read as a circuit board.
   house: {
     geometry: () => new THREE.BoxGeometry(1, 1, 1),
-    footprint: 1.9,
-    height: (v) => 1.3 + v * 1.1,
+    material: 'building',
+    footprint: 1.5,
+    height: (v) => 3 + v * v * 9,
   },
   park: {
     geometry: () => new THREE.ConeGeometry(0.5, 1, 7),
-    footprint: 2.0,
-    height: (v) => 1.6 + v * 1.4,
+    material: 'quiet',
+    footprint: 1.7,
+    height: (v) => 2 + v * 2,
   },
   bridge: {
     geometry: () => new THREE.BoxGeometry(1, 1, 1),
-    footprint: 2.2,
-    height: (v) => 0.45 + v * 0.3,
+    material: 'quiet',
+    footprint: 1.9,
+    height: (v) => 0.5 + v * 0.4,
   },
   studio: {
     geometry: () => new THREE.BoxGeometry(1, 1, 1),
-    footprint: 1.8,
-    height: (v) => 2.0 + v * 1.6,
+    material: 'building',
+    footprint: 1.35,
+    height: (v) => 5 + v * v * 14,
   },
   library: {
     geometry: () => new THREE.BoxGeometry(1, 1, 1),
-    footprint: 2.1,
-    height: (v) => 1.8 + v * 0.9,
+    material: 'building',
+    footprint: 1.65,
+    height: (v) => 3.5 + v * 5,
   },
   installation: {
-    geometry: () => new THREE.OctahedronGeometry(0.8, 0),
-    footprint: 1.6,
-    height: (v) => 1.4 + v * 0.7,
-    float: (v) => 8 + v * 5,
+    geometry: () => new THREE.OctahedronGeometry(0.75, 0),
+    material: 'installation',
+    footprint: 1.5,
+    height: (v) => 1.5 + v * 0.8,
+    float: (v) => 9 + v * 7,
   },
 };
 
-const KINDS = Object.keys(KIND_SPECS) as StructureKind[];
-
 export class CityScene {
   readonly group = new THREE.Group();
+  /** Installations bob and turn; the frame loop needs them. */
+  readonly installations: THREE.InstancedMesh[] = [];
 
-  private instanced = new Map<StructureKind, THREE.InstancedMesh>();
-  /** instanceId -> pick target, per kind. Rebuilt on every layout change. */
-  private targets = new Map<StructureKind, PickTarget[]>();
+  private meshes: THREE.InstancedMesh[] = [];
   private ground: THREE.Mesh | null = null;
-  private parkland: THREE.Mesh[] = [];
-  private material: THREE.MeshStandardMaterial;
+  private decor: THREE.Object3D[] = [];
+  /** Materials are keyed by kind-and-tint and reused across rebuilds. */
+  private materials = new Map<string, THREE.MeshStandardMaterial>();
+  private windowTexture: THREE.Texture;
   private dummy = new THREE.Object3D();
 
   constructor() {
-    this.material = new THREE.MeshStandardMaterial({
-      color: 0x8d93a3,
-      roughness: 0.85,
-      metalness: 0.0,
-    });
+    this.windowTexture = makeWindowTexture();
+  }
+
+  private materialFor(key: MaterialKey, tint: number): THREE.MeshStandardMaterial {
+    const id = `${key}|${tint}`;
+    let material = this.materials.get(id);
+    if (!material) {
+      material =
+        key === 'building'
+          ? makeBuildingMaterial(this.windowTexture, tint)
+          : key === 'installation'
+            ? makeInstallationMaterial(tint)
+            : makeQuietMaterial();
+      this.materials.set(id, material);
+    }
+    return material;
   }
 
   /** Rebuild the whole city from a layout. Cheap enough to call on every scrubber tick. */
@@ -112,62 +142,84 @@ export class CityScene {
     this.buildStructures(layout);
   }
 
-  /** All pickable structures, for raycasting. */
   get pickables(): THREE.InstancedMesh[] {
-    return [...this.instanced.values()];
+    return this.meshes;
   }
 
   targetFor(mesh: THREE.InstancedMesh, instanceId: number): PickTarget | null {
-    const kind = mesh.userData.kind as StructureKind | undefined;
-    if (!kind) return null;
-    return this.targets.get(kind)?.[instanceId] ?? null;
+    const targets = mesh.userData.targets as PickTarget[] | undefined;
+    return targets?.[instanceId] ?? null;
   }
 
   // --- internals ---------------------------------------------------------
 
   private buildGround(layout: CityLayout): void {
-    // Enough overshoot that the ground's edge never reads as a visible disc rim, but not so much
-    // that the empty plane dominates the frame.
     const radius = Math.max(layout.radius * 1.6, 45);
 
     const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(radius, 96),
-      new THREE.MeshStandardMaterial({ color: 0x12141d, roughness: 1 }),
+      new THREE.CircleGeometry(radius, 128),
+      new THREE.MeshStandardMaterial({ color: 0x07080d, roughness: 1, metalness: 0 }),
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     this.ground = ground;
     this.group.add(ground);
 
-    // Quiet months are parkland, never gaps — this is the 3D half of principle 1.
+    // Ring roads between months. Faintly lit, so the tree rings stay legible from above without
+    // needing labels.
     for (const band of layout.bands) {
-      if (!band.isEmpty) continue;
-      const ring = new THREE.Mesh(
-        new THREE.RingGeometry(band.innerRadius, band.outerRadius, 96),
-        new THREE.MeshStandardMaterial({
-          color: 0x2c3a2a,
-          roughness: 1,
+      const road = new THREE.Mesh(
+        new THREE.RingGeometry(band.outerRadius, band.outerRadius + 0.35, 160),
+        new THREE.MeshBasicMaterial({
+          color: band.isEmpty ? 0x4c7a52 : 0x2a3350,
+          transparent: true,
+          opacity: band.isEmpty ? 0.55 : 0.35,
           side: THREE.DoubleSide,
         }),
       );
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 0.02;
-      this.parkland.push(ring);
-      this.group.add(ring);
+      road.rotation.x = -Math.PI / 2;
+      road.position.y = 0.03;
+      this.decor.push(road);
+      this.group.add(road);
+
+      // Quiet months are parkland, never gaps — the 3D half of that rule.
+      if (band.isEmpty) {
+        const park = new THREE.Mesh(
+          new THREE.RingGeometry(band.innerRadius, band.outerRadius, 160),
+          new THREE.MeshStandardMaterial({ color: 0x16281a, roughness: 1 }),
+        );
+        park.rotation.x = -Math.PI / 2;
+        park.position.y = 0.02;
+        this.decor.push(park);
+        this.group.add(park);
+      }
     }
   }
 
   private buildStructures(layout: CityLayout): void {
-    const byKind = new Map<StructureKind, PickTarget[]>();
-    const transforms = new Map<StructureKind, THREE.Matrix4[]>();
+    /** One bucket per kind-and-tint pair; each becomes a single InstancedMesh. */
+    interface Bucket {
+      kind: StructureKind;
+      tint: number;
+      matrices: THREE.Matrix4[];
+      targets: PickTarget[];
+    }
+    const buckets = new Map<string, Bucket>();
 
-    const push = (kind: StructureKind, target: PickTarget, matrix: THREE.Matrix4) => {
-      const targets = byKind.get(kind);
-      if (targets) targets.push(target);
-      else byKind.set(kind, [target]);
-      const list = transforms.get(kind);
-      if (list) list.push(matrix);
-      else transforms.set(kind, [matrix]);
+    const push = (
+      kind: StructureKind,
+      target: PickTarget,
+      matrix: THREE.Matrix4,
+      tint: number,
+    ) => {
+      const id = `${kind}|${tint}`;
+      let bucket = buckets.get(id);
+      if (!bucket) {
+        bucket = { kind, tint, matrices: [], targets: [] };
+        buckets.set(id, bucket);
+      }
+      bucket.matrices.push(matrix);
+      bucket.targets.push(target);
     };
 
     for (const tower of layout.towers) {
@@ -183,6 +235,9 @@ export class CityScene {
           top,
         },
         matrix,
+        // Height is permanent record; light is current state. A quiet tower keeps every floor
+        // and simply stops glowing.
+        tower.lit ? 0xffd9a0 : 0x151a26,
       );
     }
 
@@ -199,34 +254,32 @@ export class CityScene {
           top,
         },
         matrix,
+        // Saturated rather than pale: a pale pink clips straight to white once it is the
+        // brightest thing in frame and gets bloomed on top.
+        placement.category === 'milestone' ? 0xff5fa8 : tintFor(placement.variation),
       );
     }
 
-    for (const kind of KINDS) {
-      const matrices = transforms.get(kind);
-      if (!matrices || matrices.length === 0) continue;
-
+    for (const bucket of buckets.values()) {
+      const spec = KIND_SPECS[bucket.kind];
       const mesh = new THREE.InstancedMesh(
-        KIND_SPECS[kind].geometry(),
-        this.material,
-        matrices.length,
+        spec.geometry(),
+        this.materialFor(spec.material, bucket.tint),
+        bucket.matrices.length,
       );
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.userData.kind = kind;
-      matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix));
+      mesh.userData.kind = bucket.kind;
+      mesh.userData.targets = bucket.targets;
+      bucket.matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix));
       mesh.instanceMatrix.needsUpdate = true;
 
-      this.instanced.set(kind, mesh);
-      this.targets.set(kind, byKind.get(kind) ?? []);
+      this.meshes.push(mesh);
       this.group.add(mesh);
+      if (bucket.kind === 'installation') this.installations.push(mesh);
     }
   }
 
   private towerTransform(tower: TowerPlacement): { matrix: THREE.Matrix4; top: number } {
-    // Height is cumulative completions and never shrinks. A minimum of one floor means a brand
-    // new commitment still reads as a building rather than a smear on the ground.
-    const height = Math.max(1, tower.floors) * FLOOR_HEIGHT + 1.2;
+    const height = Math.max(1, tower.floors) * FLOOR_HEIGHT + 3;
     const width = TOWER_FOOTPRINT * (0.85 + tower.variation * 0.3);
     this.dummy.position.set(tower.x, height / 2, tower.z);
     this.dummy.rotation.set(0, tower.rotation, 0);
@@ -238,7 +291,7 @@ export class CityScene {
   private placementTransform(p: Placement): { matrix: THREE.Matrix4; top: number } {
     const spec = KIND_SPECS[p.kind];
     const height = spec.height(p.variation);
-    const width = spec.footprint * (0.8 + p.variation * 0.35);
+    const width = spec.footprint * (0.78 + p.variation * 0.34);
     const float = spec.float ? spec.float(p.variation) : 0;
 
     this.dummy.position.set(p.x, float + height / 2, p.z);
@@ -249,20 +302,22 @@ export class CityScene {
   }
 
   private clear(): void {
-    for (const mesh of this.instanced.values()) {
+    for (const mesh of this.meshes) {
       this.group.remove(mesh);
       mesh.geometry.dispose();
       mesh.dispose();
     }
-    this.instanced.clear();
-    this.targets.clear();
+    // Materials are cached and reused across rebuilds, so they are not disposed here.
+    this.meshes = [];
+    this.installations.length = 0;
 
-    for (const ring of this.parkland) {
-      this.group.remove(ring);
-      ring.geometry.dispose();
-      (ring.material as THREE.Material).dispose();
+    for (const item of this.decor) {
+      this.group.remove(item);
+      const mesh = item as THREE.Mesh;
+      mesh.geometry?.dispose();
+      (mesh.material as THREE.Material)?.dispose();
     }
-    this.parkland = [];
+    this.decor = [];
 
     if (this.ground) {
       this.group.remove(this.ground);
@@ -274,6 +329,8 @@ export class CityScene {
 
   dispose(): void {
     this.clear();
-    this.material.dispose();
+    for (const material of this.materials.values()) material.dispose();
+    this.materials.clear();
+    this.windowTexture.dispose();
   }
 }

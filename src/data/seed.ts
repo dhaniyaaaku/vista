@@ -91,7 +91,7 @@ const EVERYDAY_CATEGORIES: Category[] = ['personal', 'rest', 'connection', 'crea
  * The uneven shape is a deliberate test case as much as set dressing: varied counts prove that
  * band width tracks volume, which is what gives the city its tree rings.
  */
-const MONTHLY_PATTERN = [22, 31, 17, 34, 26, 29, 15];
+const MONTHLY_PATTERN = [130, 105, 148, 118, 138, 92, 155, 124, 110, 142, 98, 134];
 
 /** Days of `key` that fall inside [start, end]. First and last months are partial. */
 function daysOfMonthInRange(key: string, start: string, end: string): string[] {
@@ -114,7 +114,12 @@ const DEMO_COMMITMENTS: readonly { name: string; cadence: Commitment['cadence'];
 ];
 
 const DEMO_SEED = 20260316;
-const DEMO_DAYS = 182; // ~6 months
+/**
+ * ~18 months. Long enough that the demo city reads as a place with history rather than a village,
+ * at roughly one to one-and-a-half logged wins a day — which is a plausible rate for someone who
+ * actually uses this, not an inflated one.
+ */
+const DEMO_DAYS = 548;
 
 function isoStamp(dayOffset: number): string {
   return new Date(Date.UTC(2026, 0, 1) + dayOffset * 1000).toISOString();
@@ -140,7 +145,7 @@ export function buildDemoCity(seed: number = DEMO_SEED): CityData {
   const quietMonth = Math.floor(months.length / 2);
 
   let milestonesPlaced = 0;
-  const milestoneBudget = 5;
+  const milestoneBudget = 12;
 
   for (let m = 0; m < months.length; m += 1) {
     const days = daysOfMonthInRange(months[m], start, today);

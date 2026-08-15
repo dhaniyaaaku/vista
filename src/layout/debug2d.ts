@@ -6,8 +6,8 @@
  * looks wrong this is the fastest way to find out whether the cause is the layout or the render.
  */
 
-import { CATEGORIES, CATEGORY_BY_ID } from '../data/types';
-import type { CityLayout } from './polar';
+import { CATEGORY_BY_ID } from '../data/types';
+import { AVENUE_COUNT, type CityLayout } from './polar';
 import { validateLayout, type Check } from './validate';
 import { formatMonthKey } from '../data/dates';
 
@@ -64,27 +64,16 @@ export function drawLayout(
     }
   }
 
-  // --- category wedge dividers -----------------------------------------
+  // --- radial avenues ---------------------------------------------------
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.09)';
   ctx.lineWidth = 1;
-  for (let i = 0; i < CATEGORIES.length; i += 1) {
-    const angle = (TAU / CATEGORIES.length) * i;
+  for (let i = 0; i < AVENUE_COUNT; i += 1) {
+    const angle = (TAU / AVENUE_COUNT) * i;
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.lineTo(sx(Math.cos(angle) * layout.radius), sy(Math.sin(angle) * layout.radius));
     ctx.stroke();
-  }
-
-  // Wedge labels, placed mid-arc at the city edge.
-  ctx.font = '11px ui-monospace, monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  for (const meta of CATEGORIES) {
-    const angle = (TAU / CATEGORIES.length) * (meta.wedge + 0.5);
-    const r = layout.radius * 1.06;
-    ctx.fillStyle = meta.color;
-    ctx.fillText(meta.label, sx(Math.cos(angle) * r), sy(Math.sin(angle) * r));
   }
 
   // --- downtown ---------------------------------------------------------

@@ -5,8 +5,7 @@
  * squinting at dots. Every one of these corresponds to a row in the PLAN.md verification table.
  */
 
-import { CATEGORY_BY_ID, WEDGE_COUNT } from '../data/types';
-import { PLOT, WEDGE_GUTTER, type CityLayout } from './polar';
+import { AVENUE_COUNT, PLOT, type CityLayout } from './polar';
 
 const TAU = Math.PI * 2;
 
@@ -70,20 +69,23 @@ export function validateLayout(layout: CityLayout): Check[] {
     detail: `${placements.length - outOfBand}/${placements.length} in band`,
   });
 
-  // 3. Every building sits inside its category's wedge.
-  let outOfWedge = 0;
+  // 3. The radial avenues stay clear, so the city reads as planned rather than as a blob.
+  let blockingAvenue = 0;
   for (const p of placements) {
-    const wedge = CATEGORY_BY_ID[p.category].wedge;
     let angle = Math.atan2(p.z, p.x);
     if (angle < 0) angle += TAU;
-    const start = (TAU / WEDGE_COUNT) * wedge;
-    const end = start + TAU / WEDGE_COUNT;
-    if (angle < start - WEDGE_GUTTER || angle > end + WEDGE_GUTTER) outOfWedge += 1;
+    for (let a = 0; a < AVENUE_COUNT; a += 1) {
+      const centre = (TAU * a) / AVENUE_COUNT;
+      const delta = Math.abs((((angle - centre + Math.PI) % TAU) + TAU) % TAU - Math.PI);
+      // Half the plot width of slack: a building centred just outside the avenue still has
+      // footprint, and that is fine — what matters is that nothing sits in the middle of one.
+      if (delta < 0.02) blockingAvenue += 1;
+    }
   }
   checks.push({
-    name: 'Buildings inside their category wedge',
-    passed: outOfWedge === 0,
-    detail: `${placements.length - outOfWedge}/${placements.length} in wedge`,
+    name: 'Radial avenues stay clear',
+    passed: blockingAvenue === 0,
+    detail: `${AVENUE_COUNT} avenues, ${blockingAvenue} buildings blocking`,
   });
 
   // 4. Bands are contiguous, ordered, and never overlap.
