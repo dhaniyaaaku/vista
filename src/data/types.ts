@@ -1,5 +1,5 @@
 /**
- * Core data model for Habitat.
+ * Core data model for Vista.
  *
  * Two rules from PLAN.md that this file encodes:
  *  - IDs are client-generated UUIDs, never auto-increment, so later device sync can merge safely.

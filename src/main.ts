@@ -23,7 +23,7 @@ const today = todayISO();
 const firstDate = city.entries.length > 0 ? city.entries[0].date : today;
 const span = Math.max(1, daysBetween(firstDate, today));
 
-console.log('%cHabitat — demo city', 'font-weight:600');
+console.log('%cVista — demo city', 'font-weight:600');
 console.log(describeDemoCity(city));
 console.log(
   checkDeterminism(layoutCity(buildDemoCity(), today), layoutCity(buildDemoCity(), today)),

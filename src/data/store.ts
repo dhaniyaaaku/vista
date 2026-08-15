@@ -20,10 +20,10 @@ import type {
 } from './types';
 import { todayISO } from './dates';
 
-const DB_NAME = 'habitat';
+const DB_NAME = 'vista';
 const DB_VERSION = 1;
 
-interface HabitatSchema extends DBSchema {
+interface VistaSchema extends DBSchema {
   entries: { key: string; value: Entry };
   commitments: { key: string; value: Commitment };
   logs: {
@@ -33,11 +33,11 @@ interface HabitatSchema extends DBSchema {
   };
 }
 
-let dbPromise: Promise<IDBPDatabase<HabitatSchema>> | null = null;
+let dbPromise: Promise<IDBPDatabase<VistaSchema>> | null = null;
 
-function db(): Promise<IDBPDatabase<HabitatSchema>> {
+function db(): Promise<IDBPDatabase<VistaSchema>> {
   if (!dbPromise) {
-    dbPromise = openDB<HabitatSchema>(DB_NAME, DB_VERSION, {
+    dbPromise = openDB<VistaSchema>(DB_NAME, DB_VERSION, {
       upgrade(database) {
         database.createObjectStore('entries', { keyPath: 'id' });
         database.createObjectStore('commitments', { keyPath: 'id' });
