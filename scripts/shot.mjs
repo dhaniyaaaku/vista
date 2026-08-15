@@ -9,7 +9,7 @@
  */
 
 import { chromium } from 'playwright';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
 const args = process.argv.slice(2);
@@ -26,17 +26,24 @@ const scrub = flag('scrub', null);
 
 await mkdir(dirname(out), { recursive: true });
 
-const browser = await chromium.launch();
+// SwiftShader flags: headless Chromium has no GPU, and WebGL silently fails without them.
+const browser = await chromium.launch({
+  args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--use-gl=angle'],
+});
+// 1x scale: software GL makes a 2x buffer painfully slow for no diagnostic gain.
 const page = await browser.newPage({
   viewport: { width: 1600, height: 1000 },
-  deviceScaleFactor: 2,
+  deviceScaleFactor: 1,
 });
 
 const messages = [];
 page.on('console', (m) => messages.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => messages.push(`[pageerror] ${e.message}`));
 
-await page.goto(url, { waitUntil: 'load' });
+const target = new URL(url);
+target.searchParams.set('capture', '1');
+
+await page.goto(target.toString(), { waitUntil: 'load' });
 await page.waitForTimeout(wait);
 
 if (scrub !== null) {
@@ -45,7 +52,19 @@ if (scrub !== null) {
   await page.waitForTimeout(400);
 }
 
-await page.screenshot({ path: out });
+// Read the canvas framebuffer directly rather than using page.screenshot: on a software GL
+// surface Playwright's capture waits for a frame that a continuous rAF loop never delivers.
+// Needs ?capture in the URL so the renderer keeps its drawing buffer.
+const dataUrl = await page.evaluate(() => {
+  const canvas = document.querySelector('canvas');
+  return canvas ? canvas.toDataURL('image/png') : null;
+});
+
+if (dataUrl) {
+  await writeFile(out, Buffer.from(dataUrl.split(',')[1], 'base64'));
+} else {
+  await page.screenshot({ path: out, animations: 'disabled', timeout: 60_000 });
+}
 await browser.close();
 
 console.log(`screenshot -> ${out}`);
