@@ -46,6 +46,16 @@ target.searchParams.set('capture', '1');
 await page.goto(target.toString(), { waitUntil: 'load' });
 await page.waitForTimeout(wait);
 
+const mouse = flag('mouse', null);
+if (mouse !== null) {
+  // Move in a few steps so pointermove fires and the butterfly has time to fly over and land.
+  const [mx, my] = mouse.split(',').map(Number);
+  await page.mouse.move(mx * 0.5, my * 0.5);
+  await page.waitForTimeout(300);
+  await page.mouse.move(mx, my, { steps: 12 });
+  await page.waitForTimeout(2200);
+}
+
 if (scrub !== null) {
   await page.fill('#scrub', scrub).catch(() => {});
   await page.dispatchEvent('#scrub', 'input').catch(() => {});
@@ -65,6 +75,16 @@ if (dataUrl) {
 } else {
   await page.screenshot({ path: out, animations: 'disabled', timeout: 60_000 });
 }
+
+// The canvas framebuffer holds no DOM overlays, so anything rendered as HTML has to be reported
+// separately or it looks broken in every screenshot.
+const overlay = await page.evaluate(() => {
+  const card = document.querySelector('.memory-card');
+  if (!card) return 'no card element';
+  const visible = card.classList.contains('is-visible');
+  return `${visible ? 'VISIBLE' : 'hidden'} — ${card.textContent?.trim() || '(empty)'}`;
+});
+console.log(`\nmemory card: ${overlay}`);
 await browser.close();
 
 console.log(`screenshot -> ${out}`);

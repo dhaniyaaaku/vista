@@ -17,7 +17,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { CityScene } from './city';
 import type { CityLayout } from '../layout/polar';
 
-const SKY = 0x05060c;
+/** Horizon colour. Fog matches it so the outer city dissolves into the sky rather than a wall. */
+const HORIZON = 0x1d0d36;
 
 export class Viewer {
   readonly scene = new THREE.Scene();
@@ -53,8 +54,7 @@ export class Viewer {
     // shadows on two thousand instances are the single most expensive thing we could buy.
     this.renderer.shadowMap.enabled = false;
 
-    this.scene.background = new THREE.Color(SKY);
-    this.scene.fog = new THREE.Fog(SKY, 120, 340);
+    this.scene.fog = new THREE.Fog(HORIZON, 120, 340);
     this.scene.add(this.city.group);
 
     this.camera = new THREE.PerspectiveCamera(28, 1, 0.5, 2000);
@@ -68,6 +68,7 @@ export class Viewer {
     this.controls.maxPolarAngle = Math.PI / 2 - 0.05;
     this.controls.enablePan = false;
 
+    this.addSky();
     this.addNightLights();
     this.addStars();
 
@@ -148,6 +149,55 @@ export class Viewer {
     cancelAnimationFrame(this.frame);
   }
 
+  /**
+   * Gradient sky dome.
+   *
+   * A flat background colour makes the city look like it was cut out and pasted onto black. A
+   * three-stop vertical gradient — violet at the horizon through indigo to near-black overhead —
+   * gives the scene depth and somewhere for the skyline to sit against.
+   *
+   * Colours go through THREE.Color, so they are converted from sRGB into the linear working space
+   * and OutputPass converts back at the end of the composer chain.
+   */
+  private addSky(): void {
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        // Dark enough that the stars read and the skyline stays the brightest thing in frame.
+        // A saturated sky at full brightness reads as a painted wall, not as night.
+        horizonColor: { value: new THREE.Color(HORIZON) },
+        midColor: { value: new THREE.Color(0x0d0722) },
+        topColor: { value: new THREE.Color(0x03030a) },
+      },
+      vertexShader: /* glsl */ `
+        varying vec3 vWorldPosition;
+        void main() {
+          vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform vec3 horizonColor;
+        uniform vec3 midColor;
+        uniform vec3 topColor;
+        varying vec3 vWorldPosition;
+        void main() {
+          float h = normalize(vWorldPosition).y;
+          // Tight bands near the horizon: at this camera elevation almost all of the visible
+          // dome sits in the lowest part of the gradient.
+          vec3 c = mix(horizonColor, midColor, smoothstep(-0.02, 0.12, h));
+          c = mix(c, topColor, smoothstep(0.10, 0.45, h));
+          gl_FragColor = vec4(c, 1.0);
+        }
+      `,
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+    });
+
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(1300, 48, 32), material);
+    this.scene.add(sky);
+  }
+
   private addNightLights(): void {
     // Just enough to keep unlit faces from going pure black. The city lights itself.
     this.scene.add(new THREE.HemisphereLight(0x2a3550, 0x05060a, 0.55));
@@ -157,33 +207,49 @@ export class Viewer {
     this.scene.add(moon);
   }
 
+  /**
+   * Layered star field.
+   *
+   * Three passes at different sizes and opacities rather than one uniform sprinkle — a real sky
+   * has a few bright stars over a haze of faint ones, and a single uniform layer reads as noise.
+   * They sit low in the sky too, so they are visible above the skyline rather than only overhead.
+   */
   private addStars(): void {
-    const count = 1400;
-    const positions = new Float32Array(count * 3);
-    for (let i = 0; i < count; i += 1) {
-      // Upper hemisphere only, on a shell well outside the city.
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(Math.random() * 0.95);
-      const r = 900 + Math.random() * 250;
-      positions[i * 3] = Math.sin(phi) * Math.cos(theta) * r;
-      positions[i * 3 + 1] = Math.cos(phi) * r;
-      positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * r;
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const layers = [
+      { count: 1600, size: 1.9, opacity: 0.6, color: 0xaab6e0 },
+      { count: 500, size: 3, opacity: 0.85, color: 0xdfe6ff },
+      { count: 120, size: 4.5, opacity: 1, color: 0xffffff },
+    ];
 
-    this.stars = new THREE.Points(
-      geometry,
-      new THREE.PointsMaterial({
-        color: 0xdfe6ff,
-        size: 2.4,
-        sizeAttenuation: false,
-        transparent: true,
-        opacity: 0.75,
-        fog: false,
-      }),
-    );
-    this.scene.add(this.stars);
+    for (const layer of layers) {
+      const positions = new Float32Array(layer.count * 3);
+      for (let i = 0; i < layer.count; i += 1) {
+        const theta = Math.random() * Math.PI * 2;
+        // Bias toward the horizon so stars sit behind the skyline, not just at the zenith.
+        const phi = Math.acos(Math.random() * 0.98);
+        const r = 1000 + Math.random() * 200;
+        positions[i * 3] = Math.sin(phi) * Math.cos(theta) * r;
+        positions[i * 3 + 1] = Math.abs(Math.cos(phi)) * r;
+        positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * r;
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+      const points = new THREE.Points(
+        geometry,
+        new THREE.PointsMaterial({
+          color: layer.color,
+          size: layer.size,
+          sizeAttenuation: false,
+          transparent: true,
+          opacity: layer.opacity,
+          fog: false,
+          depthWrite: false,
+        }),
+      );
+      this.scene.add(points);
+      if (!this.stars) this.stars = points;
+    }
   }
 
   private resize(): void {

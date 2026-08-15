@@ -11,7 +11,7 @@
  */
 
 import * as THREE from 'three';
-import type { StructureKind } from '../data/types';
+import type { Category, StructureKind } from '../data/types';
 import type { CityLayout, Placement, TowerPlacement } from '../layout/polar';
 import {
   makeBuildingMaterial,
@@ -38,7 +38,9 @@ export interface PickTarget {
   kind: 'entry' | 'tower';
   entryId?: string;
   commitmentId?: string;
+  category?: Category;
   text: string;
+  /** For an entry this is its ISO date; for a tower, its floors and cadence. */
   subtitle: string;
   position: THREE.Vector3;
   /** Top of the structure — where the butterfly lands. */
@@ -248,6 +250,7 @@ export class CityScene {
         {
           kind: 'entry',
           entryId: placement.entryId,
+          category: placement.category,
           text: placement.text,
           subtitle: placement.date,
           position: new THREE.Vector3(placement.x, 0, placement.z),

@@ -7,12 +7,16 @@
  */
 
 import './style.css';
+import * as THREE from 'three';
 import { buildDemoCity, describeDemoCity } from './data/seed';
 import { layoutCity } from './layout/polar';
 import { drawLayout } from './layout/debug2d';
 import { checkDeterminism } from './layout/validate';
 import { addDays, daysBetween, formatLongDate, todayISO } from './data/dates';
 import { Viewer } from './scene/viewer';
+import { Butterfly } from './scene/butterfly';
+import { MemoryCard } from './ui/memoryCard';
+import type { PickTarget } from './scene/city';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const scrub = document.querySelector<HTMLInputElement>('#scrub')!;
@@ -54,11 +58,81 @@ if (new URLSearchParams(location.search).has('debug2d')) {
   viewer.setLayout(full);
   // Framed once against the finished city so scrubbing back in time never yanks the camera.
   viewer.frameCity(full);
+
+  const butterfly = new Butterfly();
+  viewer.scene.add(butterfly.group);
+
+  const card = new MemoryCard();
+
+  // --- pointer tracking -------------------------------------------------
+
+  const pointer = new THREE.Vector2(0, 0);
+  const screen = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  let pointerInside = false;
+
+  const raycaster = new THREE.Raycaster();
+  // The plane the butterfly cruises over when it is not landing on anything.
+  const cruisePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -16);
+  const cruisePoint = new THREE.Vector3();
+  const desired = new THREE.Vector3(0, 20, 0);
+  let hovered: PickTarget | null = null;
+
+  canvas.addEventListener('pointermove', (event) => {
+    const rect = canvas.getBoundingClientRect();
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    screen.x = event.clientX;
+    screen.y = event.clientY;
+    pointerInside = true;
+  });
+
+  canvas.addEventListener('pointerleave', () => {
+    pointerInside = false;
+    hovered = null;
+    card.hide();
+  });
+
+  // Raycasting every frame against two thousand instances is wasteful and the result cannot
+  // change faster than the eye can follow, so it runs on a fixed interval instead.
+  let sincePick = 0;
+
+  viewer.onTick((dt, elapsed) => {
+    sincePick += dt;
+    if (pointerInside && sincePick > 0.06) {
+      sincePick = 0;
+      raycaster.setFromCamera(pointer, viewer.camera);
+      const hits = raycaster.intersectObjects(viewer.city.pickables, false);
+      const hit = hits.find((h) => h.instanceId !== undefined);
+      hovered =
+        hit && hit.instanceId !== undefined
+          ? viewer.city.targetFor(hit.object as THREE.InstancedMesh, hit.instanceId)
+          : null;
+
+      if (hovered) card.show(hovered, screen.x, screen.y);
+      else card.hide();
+    }
+
+    if (hovered) {
+      // Settle onto the roof of whatever is under the cursor.
+      desired.set(hovered.position.x, hovered.top + 1.6, hovered.position.z);
+    } else if (pointerInside) {
+      raycaster.setFromCamera(pointer, viewer.camera);
+      if (raycaster.ray.intersectPlane(cruisePlane, cruisePoint)) desired.copy(cruisePoint);
+    }
+
+    butterfly.update(dt, elapsed, desired, hovered !== null);
+  });
+
   viewer.start();
+
+  // --- time scrubber ----------------------------------------------------
 
   const render3d = () => {
     const asOf = asOfFor(Number(scrub.value));
     scrubDate.textContent = formatLongDate(asOf);
+    // The city is rebuilt, so any hovered target now points at a discarded mesh.
+    hovered = null;
+    card.hide();
     viewer.setLayout(layoutCity(city, asOf));
   };
   scrub.addEventListener('input', render3d);

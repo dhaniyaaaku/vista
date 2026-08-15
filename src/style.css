@@ -28,6 +28,46 @@ body {
   display: block;
   width: 100%;
   height: 100%;
+  /* The butterfly is the cursor over the city. The native one returns over UI. */
+  cursor: none;
+}
+
+.memory-card {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  max-width: 20rem;
+  padding: 12px 15px 13px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 2px solid var(--accent, #ffffff);
+  background: rgba(14, 12, 26, 0.86);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  transition: opacity 220ms ease;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.memory-card.is-visible {
+  opacity: 1;
+}
+
+.memory-card__label {
+  font-size: 10px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--accent, #8b93a8);
+  opacity: 0.85;
+  margin-bottom: 5px;
+}
+
+.memory-card__text {
+  font-size: 15px;
+  line-height: 1.4;
+  color: #f2f4fa;
 }
 
 #controls {
