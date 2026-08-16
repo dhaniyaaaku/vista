@@ -237,7 +237,9 @@ body {
 .panel-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  /* Above the landing overlay (z-index 50). The landing covers the whole viewport and captures
+     pointer events, so a panel opened from it was visible but completely unclickable. */
+  z-index: 60;
   display: grid;
   place-items: center;
   padding: 24px;
@@ -743,7 +745,9 @@ body {
   /* Near-opaque. Anything more translucent and the dark scene behind drags the pink down to a
      washed grey, which is the opposite of the intended look. */
   background:
-    linear-gradient(155deg, #fff7fb 0%, #ffe7f1 46%, #f3e4ff 100%);
+    radial-gradient(120% 90% at 12% 0%, rgba(255, 175, 214, 0.85) 0%, rgba(255, 175, 214, 0) 55%),
+    radial-gradient(110% 80% at 100% 100%, rgba(196, 152, 255, 0.7) 0%, rgba(196, 152, 255, 0) 58%),
+    linear-gradient(158deg, #ffe4f0 0%, #ffd2e6 44%, #ecd6ff 100%);
   backdrop-filter: blur(30px) saturate(150%);
   box-shadow:
     0 40px 100px rgba(60, 20, 50, 0.42),

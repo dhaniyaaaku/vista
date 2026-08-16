@@ -36,7 +36,8 @@ export function openLogForm(onSubmit: (result: LogFormResult) => Promise<void> |
   input.type = 'text';
   input.className = 'input input--lead';
   input.maxLength = 120;
-  input.required = true;
+  // Deliberately not `required`. Native validation would block submit and show a browser bubble,
+  // which looks foreign here and skips our own message.
   input.placeholder = CATEGORIES[0].hint;
   input.setAttribute('aria-label', 'What did you do?');
 
