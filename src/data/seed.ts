@@ -226,6 +226,48 @@ export function buildDemoCity(seed: number = DEMO_SEED): CityData {
   return { entries, commitments, logs };
 }
 
+/**
+ * The same city, but as real records ready to be written to the store and synced to an account.
+ *
+ * Two differences from `buildDemoCity`, both required. The ids become genuine UUIDs, because the
+ * Postgres schema types them as `uuid` and would reject `demo-entry-0`. And `isDemo` is dropped,
+ * because once these are in someone's account they are simply that person's entries — there is no
+ * such thing as a half-real city.
+ *
+ * Used to stage a full city for a demo recording. It is a deliberate, explicit action, never
+ * something that happens to a user by accident.
+ */
+export function buildSeededCity(seed?: number): CityData {
+  const source = buildDemoCity(seed);
+
+  const entryIds = new Map<string, string>();
+  const commitmentIds = new Map<string, string>();
+  const idFor = (map: Map<string, string>, old: string) => {
+    let next = map.get(old);
+    if (!next) {
+      next = crypto.randomUUID();
+      map.set(old, next);
+    }
+    return next;
+  };
+
+  return {
+    entries: source.entries.map(({ isDemo: _isDemo, ...entry }) => ({
+      ...entry,
+      id: idFor(entryIds, entry.id),
+    })),
+    commitments: source.commitments.map(({ isDemo: _isDemo, ...commitment }) => ({
+      ...commitment,
+      id: idFor(commitmentIds, commitment.id),
+    })),
+    logs: source.logs.map(({ isDemo: _isDemo, ...log }) => ({
+      ...log,
+      id: crypto.randomUUID(),
+      commitmentId: idFor(commitmentIds, log.commitmentId),
+    })),
+  };
+}
+
 /** Quick sanity numbers for the console while developing. */
 export function describeDemoCity(city: CityData): string {
   const byMonth = new Map<string, number>();

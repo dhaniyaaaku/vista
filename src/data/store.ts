@@ -193,10 +193,18 @@ export async function importCity(json: string): Promise<void> {
   const parsed = JSON.parse(json) as Partial<CityData>;
   const database = await db();
   const tx = database.transaction(['entries', 'commitments', 'logs'], 'readwrite');
-  for (const entry of parsed.entries ?? []) await tx.objectStore('entries').put(entry);
-  for (const commitment of parsed.commitments ?? []) {
-    await tx.objectStore('commitments').put(commitment);
-  }
-  for (const log of parsed.logs ?? []) await tx.objectStore('logs').put(log);
+
+  // Issue every put and await them together rather than one at a time. Awaiting each in turn is
+  // dramatically slower across a few thousand records, and it risks the transaction auto-committing
+  // at a microtask checkpoint while writes are still queued.
+  const writes: Promise<unknown>[] = [];
+  const entries = tx.objectStore('entries');
+  for (const entry of parsed.entries ?? []) writes.push(entries.put(entry));
+  const commitments = tx.objectStore('commitments');
+  for (const commitment of parsed.commitments ?? []) writes.push(commitments.put(commitment));
+  const logs = tx.objectStore('logs');
+  for (const log of parsed.logs ?? []) writes.push(logs.put(log));
+
+  await Promise.all(writes);
   await tx.done;
 }

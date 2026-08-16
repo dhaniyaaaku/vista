@@ -99,7 +99,8 @@ try {
   await page.waitForSelector('.form--inline', { timeout: 5000 });
   await page.fill('.form--inline .input', 'Move my body');
   await page.evaluate(() => document.querySelector('.form--inline .btn--primary').click());
-  await page.waitForTimeout(2500);
+  // Generous: adding a commitment rebuilds the scene, which is slow on software GL.
+  await page.waitForTimeout(4500);
   const commitmentRows = await page.locator('.commitment').count();
   check('commitment added', commitmentRows === 1, `${commitmentRows} row(s)`);
 

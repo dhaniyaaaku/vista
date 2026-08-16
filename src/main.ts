@@ -8,7 +8,7 @@
 
 import './style.css';
 import * as THREE from 'three';
-import { buildDemoCity } from './data/seed';
+import { buildDemoCity, buildSeededCity } from './data/seed';
 import { layoutCity } from './layout/polar';
 import { drawLayout } from './layout/debug2d';
 import { addDays, daysBetween, formatLongDate, todayISO } from './data/dates';
@@ -36,10 +36,17 @@ import {
   addEntry,
   deleteCommitment,
   getCity,
+  importCity,
   isEmpty,
   logCommitment,
   unlogCommitment,
 } from './data/store';
+
+/**
+ * Read once, up front. The seeding path rewrites the URL when it finishes, so anything reading
+ * `location.search` later would see flags that have already been stripped.
+ */
+const params = new URLSearchParams(location.search);
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const scrub = document.querySelector<HTMLInputElement>('#scrub')!;
@@ -70,7 +77,7 @@ function span(): { first: string; days: number } {
 
 await loadCity();
 
-if (new URLSearchParams(location.search).has('debug2d')) {
+if (params.has('debug2d')) {
   if (city.entries.length === 0) {
     demo = true;
     await loadCity();
@@ -320,6 +327,37 @@ if (new URLSearchParams(location.search).has('debug2d')) {
     viewer.setLayout(layoutCity(city, asOf));
   });
 
+  // --- staging a full city for a demo recording -------------------------
+  //
+  // `?seed` writes a complete eighteen-month city into this browser as ordinary entries, then
+  // pushes it to the signed-in account so it is there on any device. Explicit and confirmed,
+  // never automatic — it is a recording aid, not a feature.
+
+  if (params.has('seed')) {
+    const staged = buildSeededCity();
+    const ok = window.confirm(
+      `Add ${staged.entries.length} wins and ${staged.commitments.length} commitments to this city?\n\n` +
+        'They become ordinary entries you own. Use Settings to remove them again.',
+    );
+    if (ok) {
+      await importCity(JSON.stringify(staged));
+      if (session) {
+        try {
+          await syncCity(session.user.id);
+        } catch (cause) {
+          console.warn('Could not push the staged city to your account:', cause);
+          window.alert(
+            'The city was built in this browser, but could not reach your account. Check the Supabase redirect URLs and try Sync now from the account menu.',
+          );
+        }
+      }
+      demo = false;
+      await refresh({ reframe: true });
+      // Drop the parameter so a refresh does not stage a second copy.
+      history.replaceState(null, '', location.pathname);
+    }
+  }
+
   // --- landing ----------------------------------------------------------
   //
   // Shown whenever nobody is signed in. The background is the example city, purely so the scene
@@ -339,7 +377,7 @@ if (new URLSearchParams(location.search).has('debug2d')) {
   // `?local` skips the sign-in door and uses the app purely on-device. It exists for automated
   // tests and development, which otherwise cannot get past an OAuth redirect. It grants no access
   // to anything — there is no protected data on this side of the door, only sync.
-  const skipLanding = new URLSearchParams(location.search).has('local');
+  const skipLanding = params.has('local');
 
   if (!session && !skipLanding) {
     topbar.style.opacity = '0';
