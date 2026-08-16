@@ -18,6 +18,10 @@ import { MemoryCard } from './ui/memoryCard';
 import { openLogForm } from './ui/logForm';
 import { openCommitments } from './ui/commitments';
 import { openSettings } from './ui/settings';
+import { openAccount } from './ui/account';
+import { currentSession, displayName, isConfigured, onAuthChange } from './data/supabase';
+import { syncCity } from './data/sync';
+import type { Session } from '@supabase/supabase-js';
 import type { PickTarget } from './scene/city';
 import type { CityData } from './data/types';
 import {
@@ -238,6 +242,44 @@ if (new URLSearchParams(location.search).has('debug2d')) {
         await refresh({ reframe: true });
       },
     });
+  });
+
+  // --- account ----------------------------------------------------------
+
+  const accountButton = document.querySelector<HTMLButtonElement>('#open-account')!;
+  let session: Session | null = await currentSession();
+
+  function paintAccount(): void {
+    accountButton.hidden = !isConfigured();
+    accountButton.textContent = session ? displayName(session).split(' ')[0] : 'Sign in';
+  }
+  paintAccount();
+
+  accountButton.addEventListener('click', () => {
+    openAccount({
+      session: () => session,
+      onSynced: async () => {
+        demo = false;
+        await refresh({ reframe: true });
+      },
+    });
+  });
+
+  onAuthChange(async (next) => {
+    const signedIn = !session && next;
+    session = next;
+    paintAccount();
+    // Merge on sign-in so the city built before an account existed is carried up rather than
+    // being replaced by an empty one.
+    if (signedIn && next) {
+      try {
+        await syncCity(next.user.id);
+        demo = false;
+        await refresh({ reframe: true });
+      } catch (cause) {
+        console.warn('Sync after sign-in failed:', cause);
+      }
+    }
   });
 
   // --- day / night ------------------------------------------------------
