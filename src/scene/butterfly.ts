@@ -41,6 +41,7 @@ export class Butterfly {
   private position = new THREE.Vector3(0, 20, 0);
   private heading = new THREE.Vector3(0, 0, 1);
   private materials: THREE.Material[] = [];
+  private baseScale: number;
 
   /** 0 = flying, 1 = fully landed. Drives both the ease and the wing speed. */
   private landAmount = 0;
@@ -51,6 +52,7 @@ export class Butterfly {
    *              sub-pixel and simply never appears.
    */
   constructor(scale = 3.6) {
+    this.baseScale = scale;
     const wingMaterial = new THREE.MeshStandardMaterial({
       color: 0x1a1430,
       emissive: 0xffd9ec,
@@ -98,7 +100,13 @@ export class Butterfly {
    * @param desired  where it wants to be this frame
    * @param landing  true when the cursor is over a building, so it should settle rather than hover
    */
-  update(dt: number, elapsed: number, desired: THREE.Vector3, landing: boolean): void {
+  update(
+    dt: number,
+    elapsed: number,
+    desired: THREE.Vector3,
+    landing: boolean,
+    camera?: THREE.Camera,
+  ): void {
     const step = Math.min(1, dt * 60);
 
     // Ease the landing state rather than snapping, so wings slow down as it settles.
@@ -131,6 +139,15 @@ export class Butterfly {
       this.group.rotation.y = yaw;
       const turn = THREE.MathUtils.clamp(velocity.x * this.heading.z - velocity.z * this.heading.x, -1, 1);
       this.group.rotation.z = -turn * 0.5 * wander;
+    }
+
+    // Hold a constant size on screen by scaling with distance from the camera. With a fixed world
+    // size it turns into a monster when you zoom in and vanishes when you zoom out, because it is
+    // a cursor rather than a thing in the city.
+    if (camera) {
+      const distance = camera.position.distanceTo(this.group.position);
+      const scale = THREE.MathUtils.clamp((distance / 200) * this.baseScale, 0.35, 14);
+      this.group.scale.setScalar(scale);
     }
 
     // Fast flap in flight, a slow idle flutter once landed.

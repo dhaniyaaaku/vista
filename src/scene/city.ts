@@ -19,7 +19,10 @@ import {
   makeInstallationMaterial,
   makeLampMaterial,
   makeNatureMaterial,
+  makeGroundTexture,
   makeQuietMaterial,
+  makeTowerMaterial,
+  makeTowerTexture,
   makeWindowTexture,
   tintFor,
 } from './materials';
@@ -46,7 +49,7 @@ export const TOWER_FOOTPRINT = 3.4;
 
 
 /** Which shared material a structure kind draws with. */
-type MaterialKey = 'building' | 'quiet' | 'nature' | 'installation' | 'lamp';
+type MaterialKey = 'building' | 'tower' | 'quiet' | 'nature' | 'installation' | 'lamp';
 
 export interface PickTarget {
   kind: 'entry' | 'tower';
@@ -84,7 +87,7 @@ interface KindSpec {
 const KIND_SPECS: Record<StructureKind, KindSpec> = {
   skyscraper: {
     geometry: towerGeometry,
-    material: 'building',
+    material: 'tower',
     footprint: TOWER_FOOTPRINT,
     height: () => 1,
   },
@@ -139,11 +142,15 @@ export class CityScene {
   /** Materials are keyed by kind-and-tint and reused across rebuilds. */
   private materials = new Map<string, THREE.MeshStandardMaterial>();
   private windowTexture: THREE.Texture;
+  private towerTexture: THREE.Texture;
+  private groundTexture: THREE.Texture;
   private dummy = new THREE.Object3D();
   private timeOfDay: 'day' | 'night' = 'night';
 
   constructor() {
     this.windowTexture = makeWindowTexture();
+    this.towerTexture = makeTowerTexture();
+    this.groundTexture = makeGroundTexture();
   }
 
   private materialFor(key: MaterialKey, tint: number): THREE.MeshStandardMaterial {
@@ -153,13 +160,15 @@ export class CityScene {
       material =
         key === 'building'
           ? makeBuildingMaterial(this.windowTexture, tint)
-          : key === 'installation'
-            ? makeInstallationMaterial(tint)
-            : key === 'nature'
-              ? makeNatureMaterial()
-              : key === 'lamp'
-                ? makeLampMaterial()
-                : makeQuietMaterial();
+          : key === 'tower'
+            ? makeTowerMaterial(this.towerTexture, tint)
+            : key === 'installation'
+              ? makeInstallationMaterial(tint)
+              : key === 'nature'
+                ? makeNatureMaterial()
+                : key === 'lamp'
+                  ? makeLampMaterial()
+                  : makeQuietMaterial();
       material.userData.materialKey = key;
       // Remember what night looks like, so day mode can be a reversible adjustment rather than a
       // second set of materials to keep in sync.
@@ -204,9 +213,9 @@ export class CityScene {
     }
 
     if (this.ground) {
-      // Warm dusk earth rather than a grey plate, so the ground belongs to the same sunset as
-      // the sky instead of reading as a separate slab under it.
-      (this.ground.material as THREE.MeshStandardMaterial).color.setHex(day ? 0x4c3b33 : 0x07080d);
+      // The wash texture carries the shading, so this only tints it: warm earth by day, left
+      // untinted at night so the pool of light under the city shows through.
+      (this.ground.material as THREE.MeshStandardMaterial).color.setHex(day ? 0x9c8a76 : 0xffffff);
     }
   }
 
@@ -240,9 +249,16 @@ export class CityScene {
     // horizon colour, puts the visible seam at the real horizon instead.
     const radius = Math.max(layout.radius * 14, 1800);
 
+    // A flat dark disc stretching to the horizon reads as a void the city is stranded in. A soft
+    // radial wash under the city, warm and fading outward, gives it somewhere to sit.
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(radius, 128),
-      new THREE.MeshStandardMaterial({ color: 0x07080d, roughness: 1, metalness: 0 }),
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: this.groundTexture,
+        roughness: 1,
+        metalness: 0,
+      }),
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -356,8 +372,9 @@ export class CityScene {
         },
         matrix,
         // Height is permanent record; light is current state. A quiet tower keeps every floor
-        // and simply stops glowing.
-        tower.lit ? 0xffd9a0 : 0x151a26,
+        // and simply stops glowing. Cool white rather than the amber of the housing around it,
+        // so a tower is distinguishable from a tall block at a glance.
+        tower.lit ? 0xcfe4ff : 0x1b2130,
       );
     }
 
@@ -443,6 +460,7 @@ export class CityScene {
     if (this.ground) {
       this.group.remove(this.ground);
       this.ground.geometry.dispose();
+      // Material only. The ground texture is shared across rebuilds and disposed in dispose().
       (this.ground.material as THREE.Material).dispose();
       this.ground = null;
     }
@@ -453,5 +471,7 @@ export class CityScene {
     for (const material of this.materials.values()) material.dispose();
     this.materials.clear();
     this.windowTexture.dispose();
+    this.towerTexture.dispose();
+    this.groundTexture.dispose();
   }
 }

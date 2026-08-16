@@ -27,6 +27,9 @@ import type { CityLayout } from '../layout/polar';
  */
 const HORIZON = 0x2a1550;
 
+/** Night, a sunset, and a clear blue day. */
+export type TimeOfDay = 'night' | 'sunset' | 'day';
+
 export class Viewer {
   readonly scene = new THREE.Scene();
   readonly city = new CityScene();
@@ -49,7 +52,7 @@ export class Viewer {
   private glow: THREE.Sprite | null = null;
   private glowMaterial: THREE.SpriteMaterial | null = null;
   private fitDistance = 200;
-  private timeOfDay: 'day' | 'night' = 'night';
+  private timeOfDay: TimeOfDay = 'night';
 
   /**
    * Fog range, which has to differ sharply by mode.
@@ -248,6 +251,12 @@ export class Viewer {
         cloudColor: { value: new THREE.Color(0xffffff) },
         /** 0 at night, 1 in daylight. Clouds are a day-only feature. */
         cloudAmount: { value: 0 },
+        /** Strength of the rainbow. Day only. */
+        rainbow: { value: 0 },
+        /** Strength of the aurora. Night only. */
+        aurora: { value: 1 },
+        /** Direction toward the sun, so the rainbow can be placed opposite it. */
+        sunDirection: { value: new THREE.Vector3(-0.6, 0.4, -0.5).normalize() },
         time: { value: 0 },
       },
       vertexShader: /* glsl */ `
@@ -264,8 +273,20 @@ export class Viewer {
         uniform vec3 topColor;
         uniform vec3 cloudColor;
         uniform float cloudAmount;
+        uniform float rainbow;
+        uniform float aurora;
+        uniform vec3 sunDirection;
         uniform float time;
         varying vec3 vWorldPosition;
+
+        /* Red through violet across t in [0,1]. */
+        vec3 spectrum(float t) {
+          return clamp(vec3(
+            1.6 - abs(4.0 * t - 3.0),
+            1.6 - abs(4.0 * t - 2.0),
+            1.6 - abs(4.0 * t - 1.0)
+          ), 0.0, 1.0);
+        }
 
         float hash(vec2 p) {
           return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -313,6 +334,38 @@ export class Viewer {
             // Fade out near the horizon, where the deck would be edge-on and far away.
             float fade = smoothstep(0.0, 0.20, h);
             c = mix(c, cloudColor, cover * fade * cloudAmount * 0.8);
+          }
+
+          if (aurora > 0.001 && h > 0.0) {
+            // Curtains: noise that varies fast around the horizon and slowly with height, so it
+            // stretches into vertical sheets rather than looking like clouds. Two layers drifting
+            // at different speeds keep it from reading as a single static texture.
+            float az = atan(dir.z, dir.x);
+            float n1 = fbm(vec2(az * 2.6 + time * 0.045, h * 2.2 - time * 0.02));
+            float n2 = fbm(vec2(az * 4.1 - time * 0.03, h * 3.4 + time * 0.015));
+            float curtain = smoothstep(0.50, 0.86, n1) + smoothstep(0.58, 0.92, n2) * 0.6;
+
+            // Confined to a band above the horizon, out before the zenith.
+            float band = smoothstep(0.01, 0.13, h) * (1.0 - smoothstep(0.30, 0.68, h));
+
+            // Green low down shading to violet higher up, which is how they actually appear.
+            vec3 tint = mix(vec3(0.20, 1.0, 0.60), vec3(0.45, 0.40, 1.0), smoothstep(0.05, 0.34, h));
+            c += tint * curtain * band * aurora * 0.4;
+          }
+
+          if (rainbow > 0.001 && h > -0.02) {
+            // A real rainbow is a ring 42 degrees from the antisolar point, so that is where this
+            // one goes. Placing it by eye instead would sit wrong against the sun every time.
+            float ang = degrees(acos(clamp(dot(dir, -sunDirection), -1.0, 1.0)));
+            float t = (ang - 40.0) / 2.8;
+            if (t > 0.0 && t < 1.0) {
+              // Red outermost, violet innermost, and soft at both edges.
+              vec3 bow = spectrum(1.0 - t);
+              float strength = sin(t * 3.14159);
+              // Fade it out as it reaches the ground, where a rainbow would end.
+              float ground = smoothstep(-0.02, 0.10, h);
+              c = mix(c, bow, strength * ground * rainbow * 0.42);
+            }
           }
 
           gl_FragColor = vec4(c, 1.0);
@@ -382,22 +435,44 @@ export class Viewer {
     this.scene.add(this.glow);
   }
 
-  /** Swap the whole scene between night and day. */
-  setTimeOfDay(mode: 'day' | 'night'): void {
-    const day = mode === 'day';
+  /** Swap the whole scene between night, sunset and clear day. */
+  setTimeOfDay(mode: TimeOfDay): void {
+    const night = mode === 'night';
+    const sunset = mode === 'sunset';
+    const clear = mode === 'day';
+    // Everything that only distinguishes "lit" from "dark" still works off this.
+    const day = !night;
     this.timeOfDay = mode;
-    this.city.setTimeOfDay(mode);
+    this.city.setTimeOfDay(night ? 'night' : 'day');
 
     // Natural daylight: pale haze at the horizon deepening to blue overhead, with a drifting
     // cloud deck. Anything warmer than this tips the whole city yellow.
     const uniforms = this.skyMaterial?.uniforms;
     if (uniforms) {
-      uniforms.horizonColor.value.setHex(day ? 0xffd9a0 : HORIZON);
-      uniforms.lowColor.value.setHex(day ? 0xff8b4d : HORIZON);
-      uniforms.midColor.value.setHex(day ? 0xc2508a : 0x0d0722);
-      uniforms.topColor.value.setHex(day ? 0x1a2a6e : 0x03030a);
-      uniforms.cloudColor.value.setHex(day ? 0xffd2c0 : 0xffffff);
-      uniforms.cloudAmount.value = day ? 1 : 0;
+      if (clear) {
+        // Clear blue: pale haze at the horizon deepening overhead.
+        uniforms.horizonColor.value.setHex(0xdcefff);
+        uniforms.lowColor.value.setHex(0x9fd0f5);
+        uniforms.midColor.value.setHex(0x4e9fe8);
+        uniforms.topColor.value.setHex(0x1a5fc0);
+        uniforms.cloudColor.value.setHex(0xffffff);
+      } else if (sunset) {
+        uniforms.horizonColor.value.setHex(0xffd9a0);
+        uniforms.lowColor.value.setHex(0xff8b4d);
+        uniforms.midColor.value.setHex(0xc2508a);
+        uniforms.topColor.value.setHex(0x1a2a6e);
+        uniforms.cloudColor.value.setHex(0xffd2c0);
+      } else {
+        uniforms.horizonColor.value.setHex(HORIZON);
+        uniforms.lowColor.value.setHex(HORIZON);
+        uniforms.midColor.value.setHex(0x0d0722);
+        uniforms.topColor.value.setHex(0x03030a);
+        uniforms.cloudColor.value.setHex(0xffffff);
+      }
+      uniforms.cloudAmount.value = night ? 0 : clear ? 0.55 : 1;
+      uniforms.rainbow.value = clear ? 1 : 0;
+      uniforms.aurora.value = night ? 1 : 0;
+      if (this.moon) uniforms.sunDirection.value.copy(this.moon.position).normalize();
     }
 
     for (const layer of this.starLayers) layer.visible = !day;
@@ -405,36 +480,39 @@ export class Viewer {
     // The lighting is kept close to neutral even at sunset. Warm light on warm facades tips the
     // whole city yellow and every building loses its own colour.
     if (this.hemi) {
-      this.hemi.color.setHex(day ? 0xd8dcea : 0x2a3550);
-      this.hemi.groundColor.setHex(day ? 0x585460 : 0x05060a);
-      this.hemi.intensity = day ? 1 : 0.55;
+      this.hemi.color.setHex(clear ? 0xd9ecff : sunset ? 0xd8dcea : 0x2a3550);
+      this.hemi.groundColor.setHex(night ? 0x05060a : 0x585460);
+      this.hemi.intensity = night ? 0.55 : 1;
     }
     if (this.key) {
-      this.key.color.setHex(day ? 0xffe2c4 : 0x9fb8e8);
-      this.key.intensity = day ? 1.7 : 0.35;
-      // Low and to one side, so buildings catch a raking sunset light.
-      this.key.position.set(day ? -430 : -260, day ? 150 : 340, day ? -110 : -190);
+      this.key.color.setHex(clear ? 0xfffaf0 : sunset ? 0xffe2c4 : 0x9fb8e8);
+      this.key.intensity = night ? 0.35 : clear ? 2 : 1.7;
+      // High on a clear day, low at sunset so buildings catch a raking light.
+      if (clear) this.key.position.set(-320, 460, -240);
+      else if (sunset) this.key.position.set(-430, 150, -110);
+      else this.key.position.set(-260, 340, -190);
     }
     if (this.moon && this.moonMaterial) {
-      this.moonMaterial.color.setHex(day ? 0xfff0cf : 0xf4f0ff);
-      // The sun sits low near the horizon; the moon rides high.
-      this.moon.position.set(day ? -540 : -300, day ? 120 : 390, day ? -240 : -220);
-      this.moon.scale.setScalar(day ? 1.9 : 1);
+      this.moonMaterial.color.setHex(clear ? 0xfffdf0 : sunset ? 0xfff0cf : 0xf4f0ff);
+      if (clear) this.moon.position.set(-380, 520, -300);
+      else if (sunset) this.moon.position.set(-540, 120, -240);
+      else this.moon.position.set(-300, 390, -220);
+      this.moon.scale.setScalar(sunset ? 1.9 : 1.1);
     }
     if (this.glow && this.glowMaterial && this.moon) {
-      this.glowMaterial.color.setHex(day ? 0xffa25e : 0xbcc6ff);
-      this.glowMaterial.opacity = day ? 1 : 0.45;
-      this.glow.scale.setScalar(day ? 420 : 150);
+      this.glowMaterial.color.setHex(clear ? 0xfff2c8 : sunset ? 0xffa25e : 0xbcc6ff);
+      this.glowMaterial.opacity = night ? 0.45 : 1;
+      this.glow.scale.setScalar(sunset ? 420 : night ? 150 : 300);
       this.glow.position.copy(this.moon.position);
     }
 
-    this.bloom.strength = day ? 0.3 : 0.45;
+    this.bloom.strength = night ? 0.45 : clear ? 0.22 : 0.3;
 
     if (this.scene.fog instanceof THREE.Fog) {
-      this.scene.fog.color.setHex(day ? 0xff8a5c : HORIZON);
+      this.scene.fog.color.setHex(clear ? 0xdcefff : sunset ? 0xff8a5c : HORIZON);
     }
     this.applyFogRange();
-    this.renderer.toneMappingExposure = day ? 1 : 1.1;
+    this.renderer.toneMappingExposure = night ? 1.1 : 1;
   }
 
   /**

@@ -135,6 +135,67 @@ export function makeQuietMaterial(): THREE.MeshStandardMaterial {
   });
 }
 
+/**
+ * Commitment towers.
+ *
+ * Deliberately unlike every other building: a tighter, brighter window grid and a cool metallic
+ * facade, so a tower reads as a landmark rather than as a very tall house.
+ */
+export function makeTowerMaterial(
+  towerTexture: THREE.Texture,
+  tint: number,
+): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: 0x14161f,
+    roughness: 0.36,
+    metalness: 0.55,
+    emissive: tint,
+    emissiveMap: towerTexture,
+    emissiveIntensity: 0.72,
+  });
+}
+
+/** A denser, more regular grid than the housing texture. Corporate rather than domestic. */
+export function makeTowerTexture(seed = 19): THREE.Texture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, size, size);
+
+  const cols = 10;
+  const rows = 22;
+  const cellW = size / cols;
+  const cellH = size / rows;
+
+  let state = seed;
+  const rand = () => {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    return state / 4294967296;
+  };
+
+  for (let r = 0; r < rows; r += 1) {
+    // Whole floors go dark together, which is what office towers actually do at night.
+    const floorLit = rand() > 0.18;
+    for (let c = 0; c < cols; c += 1) {
+      if (!floorLit && rand() < 0.82) continue;
+      const roll = rand();
+      if (roll < 0.12) continue;
+      ctx.fillStyle = `rgba(255,255,255,${roll < 0.5 ? 0.7 : 1})`;
+      ctx.fillRect(c * cellW + cellW * 0.2, r * cellH + cellH * 0.22, cellW * 0.6, cellH * 0.5);
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 /** Trees and planting. Kept faintly self-lit so green still reads at night. */
 export function makeNatureMaterial(): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
@@ -144,6 +205,35 @@ export function makeNatureMaterial(): THREE.MeshStandardMaterial {
     emissive: 0x3d8a4e,
     emissiveIntensity: 0.18,
   });
+}
+
+/**
+ * Ground wash.
+ *
+ * The city sits on a disc that runs to the horizon, and a single flat dark colour across it looks
+ * like a void rather than land. This puts a warm pool of light under the city itself, fading out
+ * with distance, so the ground has depth and the city has somewhere to belong.
+ */
+export function makeGroundTexture(): THREE.Texture {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  // The city occupies roughly the middle tenth of this disc, so the warm core stays tight.
+  g.addColorStop(0, '#3a2b3f');
+  g.addColorStop(0.05, '#2c2233');
+  g.addColorStop(0.16, '#191428');
+  g.addColorStop(0.45, '#0d0b1a');
+  g.addColorStop(1, '#08070f');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 /** Street lamps. Small, numerous, and the main thing that makes streets legible from the air. */

@@ -105,23 +105,38 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-#daynight {
-  appearance: none;
-  cursor: pointer;
-  padding: 6px 14px;
+#timeofday {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--ink);
-  font: inherit;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  transition: background 160ms ease, border-color 160ms ease;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
 }
 
-#daynight:hover {
-  background: rgba(255, 255, 255, 0.13);
-  border-color: rgba(255, 255, 255, 0.3);
+#timeofday button {
+  appearance: none;
+  cursor: pointer;
+  padding: 6px 13px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+#timeofday button:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+#timeofday button.is-selected {
+  background: linear-gradient(135deg, #ff9ec2, #c79bf5);
+  color: #2a1020;
+  font-weight: 600;
 }
 
 /* --- top bar ----------------------------------------------------------- */
@@ -253,14 +268,24 @@ body {
   opacity: 1;
 }
 
+/*
+ * Every panel is light pink glass. Near-opaque on purpose: anything more translucent and the dark
+ * scene behind drags the pink down to a washed grey.
+ */
 .panel {
   width: min(30rem, 100%);
   max-height: min(80vh, 44rem);
   overflow-y: auto;
-  border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.11);
-  background: rgba(19, 17, 30, 0.97);
-  box-shadow: 0 32px 90px rgba(0, 0, 0, 0.6);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background:
+    radial-gradient(120% 90% at 12% 0%, rgba(255, 175, 214, 0.85) 0%, rgba(255, 175, 214, 0) 55%),
+    radial-gradient(110% 80% at 100% 100%, rgba(196, 152, 255, 0.7) 0%, rgba(196, 152, 255, 0) 58%),
+    linear-gradient(158deg, #ffe4f0 0%, #ffd2e6 44%, #ecd6ff 100%);
+  backdrop-filter: blur(30px) saturate(150%);
+  box-shadow:
+    0 40px 100px rgba(60, 20, 50, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
   transform: translateY(10px) scale(0.99);
   transition: transform 200ms ease;
 }
@@ -279,17 +304,20 @@ body {
 
 .panel__title {
   margin: 0;
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-family: 'Fraunces', ui-serif, Georgia, serif;
+  font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 48;
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: #43203a;
 }
 
 .panel__subtitle {
-  margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--muted);
-  max-width: 30ch;
+  margin: 7px 0 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #6d4a63;
+  max-width: 34ch;
 }
 
 .panel__close {
@@ -297,7 +325,7 @@ body {
   cursor: pointer;
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: #9a6f8c;
   font-size: 22px;
   line-height: 1;
   padding: 2px 6px;
@@ -305,8 +333,8 @@ body {
 }
 
 .panel__close:hover {
-  color: var(--ink);
-  background: rgba(255, 255, 255, 0.08);
+  color: #43203a;
+  background: rgba(180, 120, 160, 0.14);
 }
 
 .panel__body {
@@ -737,48 +765,169 @@ body {
   flex: 0 0 auto;
 }
 
-/* --- glass panel ------------------------------------------------------- */
+/* --- panel contents on light -------------------------------------------
+ *
+ * Everything inside a panel has to invert from the dark app palette. Scoped to `.panel` so the
+ * same controls keep their dark styling out on the toolbar.
+ */
 
-/* Light, glassy, pink. Everything inside has to invert from the dark app palette. */
-.panel--glass {
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  /* Near-opaque. Anything more translucent and the dark scene behind drags the pink down to a
-     washed grey, which is the opposite of the intended look. */
-  background:
-    radial-gradient(120% 90% at 12% 0%, rgba(255, 175, 214, 0.85) 0%, rgba(255, 175, 214, 0) 55%),
-    radial-gradient(110% 80% at 100% 100%, rgba(196, 152, 255, 0.7) 0%, rgba(196, 152, 255, 0) 58%),
-    linear-gradient(158deg, #ffe4f0 0%, #ffd2e6 44%, #ecd6ff 100%);
-  backdrop-filter: blur(30px) saturate(150%);
-  box-shadow:
-    0 40px 100px rgba(60, 20, 50, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+.panel .input {
+  border: 1px solid rgba(160, 110, 150, 0.32);
+  background: rgba(255, 255, 255, 0.7);
+  color: #3a1b32;
 }
 
-.panel--glass .panel__title {
+.panel .input::placeholder {
+  color: #a9829d;
+}
+
+.panel .input:focus {
+  outline: 2px solid rgba(200, 90, 150, 0.55);
+  background: #fff;
+}
+
+.panel .chip {
+  border-color: rgba(160, 110, 150, 0.3);
+  color: #6d4a63;
+}
+
+.panel .chip:hover {
+  color: #3a1b32;
+  border-color: rgba(160, 110, 150, 0.6);
+}
+
+.panel .chip.is-selected {
+  background: color-mix(in srgb, var(--chip) 40%, white);
+  border-color: color-mix(in srgb, var(--chip) 70%, black);
+  color: #33162c;
+  font-weight: 600;
+}
+
+.panel .row__label {
+  color: #8a6480;
+}
+
+.panel .form--inline {
+  border-top-color: rgba(160, 110, 150, 0.22);
+}
+
+.panel .btn {
+  border-color: rgba(160, 110, 150, 0.34);
+  background: rgba(255, 255, 255, 0.55);
+  color: #4a2340;
+}
+
+.panel .btn:hover {
+  background: #fff;
+  border-color: rgba(160, 110, 150, 0.7);
+}
+
+.panel .btn--primary {
+  background: linear-gradient(135deg, #ff9ec2, #c79bf5);
+  border-color: transparent;
+  color: #33132b;
+  box-shadow: 0 8px 20px rgba(200, 110, 170, 0.34);
+}
+
+.panel .btn--primary:hover {
+  background: linear-gradient(135deg, #ffb2d0, #d4affa);
+  border-color: transparent;
+}
+
+.panel .btn--danger {
+  border-color: rgba(200, 60, 80, 0.4);
+  background: rgba(255, 255, 255, 0.5);
+  color: #b6294a;
+}
+
+.panel .btn--danger:hover {
+  background: rgba(255, 220, 228, 0.9);
+}
+
+.panel .form__error {
+  color: #b6294a;
+}
+
+.panel .empty {
+  color: #6d4a63;
+}
+
+/* Commitments */
+
+.panel .commitment {
+  border-bottom-color: rgba(160, 110, 150, 0.2);
+}
+
+.panel .commitment__check {
+  border-color: rgba(140, 90, 130, 0.45);
+}
+
+.panel .commitment__check:hover {
+  border-color: rgba(140, 90, 130, 0.85);
+}
+
+.panel .commitment__check.is-done {
+  background: linear-gradient(135deg, #ff9ec2, #c79bf5);
+  border-color: transparent;
+  color: #fff;
+}
+
+.panel .commitment__name {
   font-family: 'Fraunces', ui-serif, Georgia, serif;
-  font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 48;
-  font-size: 27px;
-  font-weight: 700;
-  letter-spacing: -0.015em;
+  font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 24;
+  font-size: 16px;
+  font-weight: 600;
   color: #43203a;
 }
 
-.panel--glass .panel__close {
+.panel .commitment__detail {
+  color: #7a5470;
+}
+
+.panel .commitment__dot {
+  background: rgba(120, 80, 110, 0.3);
+}
+
+.panel .commitment__dot.is-lit {
+  background: #ffb02e;
+  box-shadow: 0 0 10px rgba(255, 176, 46, 0.85);
+}
+
+.panel .commitment__remove {
   color: #9a6f8c;
 }
 
-.panel--glass .panel__close:hover {
-  color: #43203a;
-  background: rgba(180, 120, 160, 0.14);
+.panel .commitment__remove:hover {
+  color: #b6294a;
+  background: rgba(200, 60, 90, 0.1);
 }
 
-.panel--glass .rule__icon {
+/* Settings */
+
+.panel .settings__heading {
+  font-family: 'Fraunces', ui-serif, Georgia, serif;
+  font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 24;
+  font-size: 16px;
+  color: #43203a;
+}
+
+.panel .settings__desc {
+  color: #6d4a63;
+}
+
+.panel .settings__note {
+  color: #2f7a52;
+}
+
+/* How it works */
+
+.panel .rule__icon {
   background: linear-gradient(140deg, #ffb3d0, #d5b0ff);
   color: #fff;
   box-shadow: 0 4px 12px rgba(200, 110, 160, 0.3);
 }
 
-.panel--glass .rule__title {
+.panel .rule__title {
   font-family: 'Fraunces', ui-serif, Georgia, serif;
   font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 24;
   font-size: 16px;
@@ -787,16 +936,16 @@ body {
   color: #43203a;
 }
 
-.panel--glass .rule__body,
-.panel--glass .rule__foot {
+.panel .rule__body,
+.panel .rule__foot {
   color: #5f3a55;
 }
 
-.panel--glass .rule__body {
+.panel .rule__body {
   font-size: 13px;
 }
 
-.panel--glass .rule__foot {
+.panel .rule__foot {
   border-top-color: rgba(160, 110, 150, 0.22);
 }
 

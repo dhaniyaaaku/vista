@@ -36,6 +36,9 @@ const page = await browser.newPage({
   deviceScaleFactor: 1,
 });
 
+// ?seed asks for confirmation, which blocks the page forever under automation if unanswered.
+page.on('dialog', (d) => d.accept());
+
 const messages = [];
 page.on('console', (m) => messages.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => messages.push(`[pageerror] ${e.message}`));

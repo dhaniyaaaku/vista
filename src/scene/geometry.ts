@@ -20,13 +20,35 @@ function merged(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   return geometry;
 }
 
-/** A commitment tower: a shaft with a slight setback crown, so the top reads at a distance. */
+/**
+ * A commitment tower.
+ *
+ * These are the landmarks of the city, so they get a real silhouette rather than a box: a broad
+ * podium, two setbacks up the shaft, a crown, and a spire. The stepped profile is what makes a
+ * tower legible against a skyline of ordinary blocks from any distance.
+ */
 export function towerGeometry(): THREE.BufferGeometry {
-  const shaft = new THREE.BoxGeometry(1, 0.94, 1);
-  shaft.translate(0, -0.03, 0);
-  const crown = new THREE.BoxGeometry(0.62, 0.06, 0.62);
-  crown.translate(0, 0.47, 0);
-  return merged([shaft, crown]);
+  const podium = new THREE.BoxGeometry(1.28, 0.1, 1.28);
+  podium.translate(0, -0.45, 0);
+
+  const lower = new THREE.BoxGeometry(1, 0.42, 1);
+  lower.translate(0, -0.19, 0);
+
+  const mid = new THREE.BoxGeometry(0.82, 0.3, 0.82);
+  mid.translate(0, 0.17, 0);
+
+  const upper = new THREE.BoxGeometry(0.62, 0.16, 0.62);
+  upper.translate(0, 0.4, 0);
+
+  // Crown and spire, rotated 45 degrees so the top catches light on a different plane.
+  const crown = new THREE.BoxGeometry(0.36, 0.05, 0.36);
+  crown.rotateY(Math.PI / 4);
+  crown.translate(0, 0.5, 0);
+
+  const spire = new THREE.ConeGeometry(0.1, 0.22, 6);
+  spire.translate(0, 0.61, 0);
+
+  return merged([podium, lower, mid, upper, crown, spire]);
 }
 
 /** A house: low body under a pitched roof. The roof is the whole recognisability budget. */
@@ -86,9 +108,29 @@ export function civicGeometry(): THREE.BufferGeometry {
   return merged([base, cap, lantern]);
 }
 
-/** A milestone installation: a faceted gem meant to be seen glowing from across the city. */
+/**
+ * A milestone installation: a heart, floating and glowing above the city.
+ *
+ * These mark the wins someone flagged as significant, so they are the one thing in the city that
+ * is unmistakably affectionate rather than architectural.
+ */
 export function installationGeometry(): THREE.BufferGeometry {
-  return new THREE.OctahedronGeometry(0.5, 0);
+  const shape = new THREE.Shape();
+  // Drawn upside down, then flipped, because a heart's cusp is easiest to describe from the top.
+  shape.moveTo(0, -0.5);
+  shape.bezierCurveTo(0.62, 0.06, 0.42, 0.56, 0, 0.28);
+  shape.bezierCurveTo(-0.42, 0.56, -0.62, 0.06, 0, -0.5);
+
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.3,
+    bevelEnabled: true,
+    bevelSegments: 2,
+    bevelSize: 0.07,
+    bevelThickness: 0.07,
+    curveSegments: 14,
+  });
+  geometry.center();
+  return geometry;
 }
 
 /** A street lamp: a thin pole with a lamp head, drawn at unit height. */

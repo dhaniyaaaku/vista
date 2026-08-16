@@ -31,10 +31,7 @@ const RULES: { icon: string; title: string; body: string }[] = [
 ];
 
 export function openHowItWorks(): void {
-  const panel = new Panel({
-    title: 'How it works',
-    variant: 'panel--glass',
-  });
+  const panel = new Panel({ title: 'How it works' });
 
   const list = document.createElement('div');
   list.className = 'rules';

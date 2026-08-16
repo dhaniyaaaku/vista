@@ -11,8 +11,12 @@ import * as THREE from 'three';
 import { buildDemoCity, buildSeededCity } from './data/seed';
 import { layoutCity } from './layout/polar';
 import { drawLayout } from './layout/debug2d';
+import { drawComparison } from './layout/compare';
+import { drawSunflowerExplainer } from './layout/explain';
+import { layoutIslands } from './layout/islands';
+import { drawIslands } from './layout/debugIslands';
 import { addDays, daysBetween, formatLongDate, todayISO } from './data/dates';
-import { Viewer } from './scene/viewer';
+import { Viewer, type TimeOfDay } from './scene/viewer';
 import { Butterfly } from './scene/butterfly';
 import { MemoryCard } from './ui/memoryCard';
 import { openLogForm } from './ui/logForm';
@@ -78,7 +82,49 @@ function span(): { first: string; days: number } {
 
 await loadCity();
 
-if (params.has('debug2d')) {
+if (params.has('islands')) {
+  // Verify island and sector placement as 2D dots before any of it is rendered in 3D.
+  if (city.entries.length < 200) city = buildDemoCity();
+  scrub.min = '0';
+  scrub.max = String(span().days);
+  scrub.value = scrub.max;
+  const render = () => {
+    const asOf = addDays(span().first, Number(scrub.value));
+    scrubDate.textContent = formatLongDate(asOf);
+    const checks = drawIslands(canvas, layoutIslands(city, asOf));
+    const failed = checks.filter((c) => !c.passed);
+    if (failed.length > 0) {
+      console.warn('Island checks failed:', failed.map((c) => `${c.name} — ${c.detail}`));
+    }
+  };
+  scrub.addEventListener('input', render);
+  window.addEventListener('resize', render);
+  render();
+} else if (params.has('sunflower')) {
+  // A visual answer to "do the buildings get bigger further out?" — they do not, and this draws
+  // them at true footprint so that is verifiable rather than asserted.
+  if (city.entries.length < 200) city = buildDemoCity();
+  const render = () => drawSunflowerExplainer(canvas, city);
+  window.addEventListener('resize', render);
+  render();
+} else if (params.has('compare')) {
+  // Layout candidates side by side, against real data. 2D renders in milliseconds where the 3D
+  // city takes minutes, so this is the right place to judge a spatial question.
+  if (city.entries.length < 200) city = buildDemoCity();
+  // Range before value: setting value first clamps it against the stale max from the markup.
+  scrub.min = '0';
+  scrub.max = String(span().days);
+  scrub.value = scrub.max;
+
+  const render = () => {
+    const asOf = addDays(span().first, Number(scrub.value));
+    scrubDate.textContent = formatLongDate(asOf);
+    drawComparison(canvas, city, asOf);
+  };
+  scrub.addEventListener('input', render);
+  window.addEventListener('resize', render);
+  render();
+} else if (params.has('debug2d')) {
   if (city.entries.length === 0) {
     demo = true;
     await loadCity();
@@ -206,7 +252,7 @@ if (params.has('debug2d')) {
       }
     }
 
-    butterfly.update(dt, elapsed, desired, hovered !== null);
+    butterfly.update(dt, elapsed, desired, hovered !== null, viewer.camera);
   });
 
   // --- toolbar ----------------------------------------------------------
@@ -317,15 +363,25 @@ if (params.has('debug2d')) {
 
   // --- day / night ------------------------------------------------------
 
-  const dayNight = document.querySelector<HTMLButtonElement>('#daynight')!;
-  let mode: 'day' | 'night' = 'night';
-  viewer.setTimeOfDay(mode);
-  dayNight.addEventListener('click', () => {
-    mode = mode === 'night' ? 'day' : 'night';
+  const modeButtons = [
+    ...document.querySelectorAll<HTMLButtonElement>('#timeofday button'),
+  ];
+  let mode: TimeOfDay = 'night';
+
+  function setMode(next: TimeOfDay): void {
+    mode = next;
     viewer.setTimeOfDay(mode);
-    dayNight.textContent = mode === 'night' ? 'Day' : 'Night';
-    dayNight.setAttribute('aria-pressed', String(mode === 'day'));
-  });
+    for (const button of modeButtons) {
+      const selected = button.dataset.mode === mode;
+      button.classList.toggle('is-selected', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    }
+  }
+
+  for (const button of modeButtons) {
+    button.addEventListener('click', () => setMode(button.dataset.mode as TimeOfDay));
+  }
+  setMode(mode);
 
   // --- time scrubber ----------------------------------------------------
 
@@ -401,10 +457,7 @@ if (params.has('debug2d')) {
 
     // Sunset behind the landing copy. The low camera is the only framing where the sky is on
     // screen at all, so the landing forces day mode whatever the app is set to.
-    mode = 'day';
-    viewer.setTimeOfDay(mode);
-    dayNight.textContent = 'Night';
-    dayNight.setAttribute('aria-pressed', 'true');
+    setMode('sunset');
     viewer.cinematicView(layoutCity(city, todayISO()));
 
     landing = openLanding({
