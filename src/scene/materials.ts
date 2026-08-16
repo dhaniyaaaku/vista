@@ -26,6 +26,29 @@ export function tintFor(variation: number): number {
 }
 
 /**
+ * Daylight facade colours, one per window tint.
+ *
+ * Deliberately saturated rather than derived by washing the night tint toward pale stone — that
+ * approach produced a city of identical pastels with no colour of its own. These are real facade
+ * materials: terracotta, painted render, glass curtain wall, weathered copper.
+ */
+const DAY_TINTS: Record<number, number> = {
+  0xffc27a: 0xc4703a, // terracotta
+  0xffd49a: 0xd9a04e, // ochre
+  0xffb055: 0xa8452c, // burnt brick
+  0xffe0b8: 0xe0c48c, // sandstone
+  0x8fc4f0: 0x2f6fb5, // blue glass
+  0xab9cea: 0x6b52b8, // plum render
+  0x6fdccc: 0x2e9c8a, // weathered copper
+  0xf0a0b4: 0xc4507a, // rose
+};
+
+/** Facade colour for a given window tint. Falls back to a neutral render. */
+export function dayTintFor(nightTint: number): number {
+  return DAY_TINTS[nightTint] ?? 0x9a9186;
+}
+
+/**
  * Procedural window grid.
  *
  * Cheaper and sharper than an image asset, and the randomly-dark windows are what stop a row of
@@ -103,12 +126,33 @@ export function makeBuildingMaterial(
   });
 }
 
-/** Unlit structures — parks, bridges — that should read as dark shapes, not glowing ones. */
+/** Unlit structures — bridges — that read as dark shapes rather than glowing ones. */
 export function makeQuietMaterial(): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
-    color: 0x161d1c,
+    color: 0x2a3145,
+    roughness: 0.9,
+    metalness: 0.1,
+  });
+}
+
+/** Trees and planting. Kept faintly self-lit so green still reads at night. */
+export function makeNatureMaterial(): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: 0x25452c,
     roughness: 1,
     metalness: 0,
+    emissive: 0x3d8a4e,
+    emissiveIntensity: 0.18,
+  });
+}
+
+/** Street lamps. Small, numerous, and the main thing that makes streets legible from the air. */
+export function makeLampMaterial(): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: 0x14161f,
+    roughness: 0.6,
+    emissive: 0xffcf96,
+    emissiveIntensity: 0.8,
   });
 }
 

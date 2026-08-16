@@ -46,6 +46,22 @@ target.searchParams.set('capture', '1');
 await page.goto(target.toString(), { waitUntil: 'load' });
 await page.waitForTimeout(wait);
 
+const click = flag('click', null);
+if (click !== null) {
+  // Dispatched directly rather than via page.click: the full-viewport WebGL canvas makes
+  // Playwright's actionability check time out even though the control is plainly on top.
+  const ok = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return false;
+    el.click();
+    return true;
+  }, click);
+  console.log(`click ${click}: ${ok ? 'ok' : 'element not found'}`);
+  // Generous: software GL renders this scene at well under one frame per second, so a short
+  // wait captures the pre-click frame and the change looks like it silently failed.
+  await page.waitForTimeout(6000);
+}
+
 const mouse = flag('mouse', null);
 if (mouse !== null) {
   // Move in a few steps so pointermove fires and the butterfly has time to fly over and land.

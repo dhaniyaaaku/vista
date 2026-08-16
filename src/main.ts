@@ -71,8 +71,10 @@ if (new URLSearchParams(location.search).has('debug2d')) {
   let pointerInside = false;
 
   const raycaster = new THREE.Raycaster();
-  // The plane the butterfly cruises over when it is not landing on anything.
-  const cruisePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -16);
+  // Ground plane. When the cursor is over open street rather than a building, the butterfly
+  // drops to just above the ground and flies between the buildings.
+  const cruisePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const GROUND_HOVER = 2.6;
   const cruisePoint = new THREE.Vector3();
   const desired = new THREE.Vector3(0, 20, 0);
   let hovered: PickTarget | null = null;
@@ -117,13 +119,27 @@ if (new URLSearchParams(location.search).has('debug2d')) {
       desired.set(hovered.position.x, hovered.top + 1.6, hovered.position.z);
     } else if (pointerInside) {
       raycaster.setFromCamera(pointer, viewer.camera);
-      if (raycaster.ray.intersectPlane(cruisePlane, cruisePoint)) desired.copy(cruisePoint);
+      if (raycaster.ray.intersectPlane(cruisePlane, cruisePoint)) {
+        desired.set(cruisePoint.x, GROUND_HOVER, cruisePoint.z);
+      }
     }
 
     butterfly.update(dt, elapsed, desired, hovered !== null);
   });
 
   viewer.start();
+
+  // --- day / night ------------------------------------------------------
+
+  const dayNight = document.querySelector<HTMLButtonElement>('#daynight')!;
+  let mode: 'day' | 'night' = 'night';
+  viewer.setTimeOfDay(mode);
+  dayNight.addEventListener('click', () => {
+    mode = mode === 'night' ? 'day' : 'night';
+    viewer.setTimeOfDay(mode);
+    dayNight.textContent = mode === 'night' ? 'Day' : 'Night';
+    dayNight.setAttribute('aria-pressed', String(mode === 'day'));
+  });
 
   // --- time scrubber ----------------------------------------------------
 

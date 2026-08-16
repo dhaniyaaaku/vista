@@ -12,8 +12,14 @@
 
 import * as THREE from 'three';
 
-/** How hard it chases the cursor. Tuned by feel — see the note above. */
-const FOLLOW = 0.12;
+/**
+ * How hard it chases the cursor.
+ *
+ * High enough to feel like direct control — below about 0.2 it reads as sluggish rather than
+ * alive, and the aliveness is supposed to come from the bob and drift layered on top, not from
+ * the butterfly being slow to arrive.
+ */
+const FOLLOW = 0.28;
 /** Seconds for the landing ease. */
 const LAND_TIME = 0.4;
 

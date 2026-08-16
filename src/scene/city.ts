@@ -14,12 +14,25 @@ import * as THREE from 'three';
 import type { Category, StructureKind } from '../data/types';
 import type { CityLayout, Placement, TowerPlacement } from '../layout/polar';
 import {
+  dayTintFor,
   makeBuildingMaterial,
   makeInstallationMaterial,
+  makeLampMaterial,
+  makeNatureMaterial,
   makeQuietMaterial,
   makeWindowTexture,
   tintFor,
 } from './materials';
+import {
+  civicGeometry,
+  houseGeometry,
+  installationGeometry,
+  lampGeometry,
+  linkGeometry,
+  studioGeometry,
+  towerGeometry,
+  treeGeometry,
+} from './geometry';
 
 /**
  * World height of one skyscraper floor.
@@ -31,8 +44,9 @@ import {
 export const FLOOR_HEIGHT = 0.11;
 export const TOWER_FOOTPRINT = 3.4;
 
+
 /** Which shared material a structure kind draws with. */
-type MaterialKey = 'building' | 'quiet' | 'installation';
+type MaterialKey = 'building' | 'quiet' | 'nature' | 'installation' | 'lamp';
 
 export interface PickTarget {
   kind: 'entry' | 'tower';
@@ -55,52 +69,61 @@ interface KindSpec {
   height: (variation: number) => number;
   /** Height above ground the structure floats at. Only installations leave the ground. */
   float?: (variation: number) => number;
+  /** Elongates the footprint along X. A bridge that spans nothing is just a slab. */
+  stretchX?: number;
 }
 
+/**
+ * Size classes are as load-bearing as the silhouettes.
+ *
+ * An earlier pass made everything tall to chase a dense-skyline look, which flattened the whole
+ * vocabulary — a nap and a deadline rendered as the same tower. Heights now form a deliberate
+ * hierarchy: commitment towers dominate downtown, studios and libraries are mid-rise, and houses,
+ * trees and bridges stay genuinely low so they read as what they are.
+ */
 const KIND_SPECS: Record<StructureKind, KindSpec> = {
   skyscraper: {
-    geometry: () => new THREE.BoxGeometry(1, 1, 1),
+    geometry: towerGeometry,
     material: 'building',
     footprint: TOWER_FOOTPRINT,
     height: () => 1,
   },
-  // Heights are deliberately large relative to the plot. A dense forest of slender towers is what
-  // makes an aerial night city read as a city; low blocks at this spacing read as a circuit board.
   house: {
-    geometry: () => new THREE.BoxGeometry(1, 1, 1),
+    geometry: houseGeometry,
     material: 'building',
-    footprint: 1.5,
-    height: (v) => 3 + v * v * 9,
+    footprint: 1.95,
+    height: (v) => 1.7 + v * 1.2,
   },
   park: {
-    geometry: () => new THREE.ConeGeometry(0.5, 1, 7),
-    material: 'quiet',
-    footprint: 1.7,
-    height: (v) => 2 + v * 2,
+    geometry: treeGeometry,
+    material: 'nature',
+    footprint: 1.85,
+    height: (v) => 2.4 + v * 2.2,
   },
   bridge: {
-    geometry: () => new THREE.BoxGeometry(1, 1, 1),
-    material: 'quiet',
-    footprint: 1.9,
-    height: (v) => 0.5 + v * 0.4,
+    geometry: linkGeometry,
+    material: 'building',
+    footprint: 2.1,
+    height: (v) => 3 + v * 2.4,
+    stretchX: 1.35,
   },
   studio: {
-    geometry: () => new THREE.BoxGeometry(1, 1, 1),
+    geometry: studioGeometry,
     material: 'building',
-    footprint: 1.35,
-    height: (v) => 5 + v * v * 14,
+    footprint: 1.6,
+    height: (v) => 3.6 + v * v * 6.5,
   },
   library: {
-    geometry: () => new THREE.BoxGeometry(1, 1, 1),
+    geometry: civicGeometry,
     material: 'building',
-    footprint: 1.65,
-    height: (v) => 3.5 + v * 5,
+    footprint: 2.0,
+    height: (v) => 2.5 + v * 2.2,
   },
   installation: {
-    geometry: () => new THREE.OctahedronGeometry(0.75, 0),
+    geometry: installationGeometry,
     material: 'installation',
-    footprint: 1.5,
-    height: (v) => 1.5 + v * 0.8,
+    footprint: 2.2,
+    height: (v) => 2 + v * 1.2,
     float: (v) => 9 + v * 7,
   },
 };
@@ -117,6 +140,7 @@ export class CityScene {
   private materials = new Map<string, THREE.MeshStandardMaterial>();
   private windowTexture: THREE.Texture;
   private dummy = new THREE.Object3D();
+  private timeOfDay: 'day' | 'night' = 'night';
 
   constructor() {
     this.windowTexture = makeWindowTexture();
@@ -131,17 +155,68 @@ export class CityScene {
           ? makeBuildingMaterial(this.windowTexture, tint)
           : key === 'installation'
             ? makeInstallationMaterial(tint)
-            : makeQuietMaterial();
+            : key === 'nature'
+              ? makeNatureMaterial()
+              : key === 'lamp'
+                ? makeLampMaterial()
+                : makeQuietMaterial();
+      material.userData.materialKey = key;
+      // Remember what night looks like, so day mode can be a reversible adjustment rather than a
+      // second set of materials to keep in sync.
+      material.userData.nightColor = material.color.getHex();
+      material.userData.nightEmissive = material.emissiveIntensity;
+      material.userData.dayColor = dayTintFor(tint);
       this.materials.set(id, material);
     }
     return material;
+  }
+
+  /** Day or night. Buildings stop glowing and take on daylight surfaces; lamps switch off. */
+  setTimeOfDay(mode: 'day' | 'night'): void {
+    this.timeOfDay = mode;
+    this.applyTimeOfDay();
+  }
+
+  private applyTimeOfDay(): void {
+    const day = this.timeOfDay === 'day';
+    for (const material of this.materials.values()) {
+      const key = material.userData.materialKey as MaterialKey;
+      const nightColor = material.userData.nightColor as number;
+      const nightEmissive = material.userData.nightEmissive as number;
+
+      if (key === 'building') {
+        // Golden hour, not midday: the facade takes the light but the windows are already on,
+        // so the city keeps its lights in both modes.
+        material.color.setHex(day ? (material.userData.dayColor as number) : nightColor);
+        material.emissiveIntensity = day ? nightEmissive * 0.55 : nightEmissive;
+      } else if (key === 'lamp') {
+        material.emissiveIntensity = day ? nightEmissive * 0.45 : nightEmissive;
+        material.color.setHex(day ? 0x4a5162 : nightColor);
+      } else if (key === 'nature') {
+        material.color.setHex(day ? 0x4f8f57 : nightColor);
+        material.emissiveIntensity = day ? 0 : nightEmissive;
+      } else if (key === 'quiet') {
+        material.color.setHex(day ? 0x8891a5 : nightColor);
+      } else {
+        // Installations keep glowing in daylight — a milestone should still announce itself.
+        material.emissiveIntensity = day ? nightEmissive * 0.7 : nightEmissive;
+      }
+    }
+
+    if (this.ground) {
+      // Warm dusk earth rather than a grey plate, so the ground belongs to the same sunset as
+      // the sky instead of reading as a separate slab under it.
+      (this.ground.material as THREE.MeshStandardMaterial).color.setHex(day ? 0x4c3b33 : 0x07080d);
+    }
   }
 
   /** Rebuild the whole city from a layout. Cheap enough to call on every scrubber tick. */
   setLayout(layout: CityLayout): void {
     this.clear();
     this.buildGround(layout);
+    this.buildLamps(layout);
     this.buildStructures(layout);
+    this.applyTimeOfDay();
   }
 
   get pickables(): THREE.InstancedMesh[] {
@@ -196,6 +271,42 @@ export class CityScene {
         this.group.add(park);
       }
     }
+  }
+
+  /**
+   * Street lamps along every ring road.
+   *
+   * Cheap, and the single biggest thing that makes an aerial city read as inhabited rather than as
+   * a field of boxes — it is the streets that tell you people live there.
+   */
+  private buildLamps(layout: CityLayout): void {
+    const matrices: THREE.Matrix4[] = [];
+    // Very sparse and short. Lamps taller or denser than this turn every ring road into a picket
+    // fence of candles and pull attention away from the buildings.
+    const spacing = 38;
+    const height = 1.7;
+
+    for (const band of layout.bands) {
+      const radius = band.outerRadius + 0.2;
+      const count = Math.max(6, Math.round((Math.PI * 2 * radius) / spacing));
+      for (let i = 0; i < count; i += 1) {
+        const angle = (Math.PI * 2 * i) / count;
+        this.dummy.position.set(Math.cos(angle) * radius, height / 2, Math.sin(angle) * radius);
+        this.dummy.rotation.set(0, angle, 0);
+        this.dummy.scale.set(1, height, 1);
+        this.dummy.updateMatrix();
+        matrices.push(this.dummy.matrix.clone());
+      }
+    }
+
+    if (matrices.length === 0) return;
+
+    const mesh = new THREE.InstancedMesh(lampGeometry(), this.materialFor('lamp', 0), matrices.length);
+    matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix));
+    mesh.instanceMatrix.needsUpdate = true;
+    // Not pickable: lamps are set dressing and carry no memory.
+    this.decor.push(mesh);
+    this.group.add(mesh);
   }
 
   private buildStructures(layout: CityLayout): void {
@@ -299,7 +410,7 @@ export class CityScene {
 
     this.dummy.position.set(p.x, float + height / 2, p.z);
     this.dummy.rotation.set(0, p.rotation, 0);
-    this.dummy.scale.set(width, height, width);
+    this.dummy.scale.set(width * (spec.stretchX ?? 1), height, width);
     this.dummy.updateMatrix();
     return { matrix: this.dummy.matrix.clone(), top: float + height };
   }

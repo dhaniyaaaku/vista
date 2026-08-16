@@ -33,7 +33,32 @@ export class Viewer {
   private frame = 0;
   private onFrame: ((dt: number, elapsed: number) => void)[] = [];
   private timer = new THREE.Timer();
-  private stars: THREE.Points | null = null;
+  private starLayers: THREE.Points[] = [];
+  private skyMaterial: THREE.ShaderMaterial | null = null;
+  private hemi: THREE.HemisphereLight | null = null;
+  private key: THREE.DirectionalLight | null = null;
+  private moon: THREE.Mesh | null = null;
+  private moonMaterial: THREE.MeshBasicMaterial | null = null;
+  private glow: THREE.Sprite | null = null;
+  private glowMaterial: THREE.SpriteMaterial | null = null;
+  private fitDistance = 200;
+  private timeOfDay: 'day' | 'night' = 'night';
+
+  /**
+   * Fog range, which has to differ sharply by mode.
+   *
+   * At night fog sits close, so the outer city dissolves into the sky. In daylight the same range
+   * buries the whole city in white haze — daylight fog has to start well beyond the city and only
+   * touch the far edge.
+   */
+  private applyFogRange(): void {
+    if (!(this.scene.fog instanceof THREE.Fog)) return;
+    const day = this.timeOfDay === 'day';
+    // Daylight fog has to start far beyond the city. At a shallow camera angle the ground plane
+    // runs all the way to the horizon, and anything closer than this washes the whole scene out.
+    this.scene.fog.near = this.fitDistance * (day ? 4 : 0.7);
+    this.scene.fog.far = this.fitDistance * (day ? 12 : 2.4);
+  }
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -71,6 +96,7 @@ export class Viewer {
     this.addSky();
     this.addNightLights();
     this.addStars();
+    this.addMoon();
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -122,10 +148,8 @@ export class Viewer {
     this.controls.update();
 
     // Fog has to follow the framing, or the whole city sits inside it and greys out.
-    if (this.scene.fog instanceof THREE.Fog) {
-      this.scene.fog.near = distance * 0.7;
-      this.scene.fog.far = distance * 2.4;
-    }
+    this.fitDistance = distance;
+    this.applyFogRange();
   }
 
   onTick(fn: (dt: number, elapsed: number) => void): void {
@@ -138,6 +162,7 @@ export class Viewer {
       this.timer.update();
       const dt = this.timer.getDelta();
       const elapsed = this.timer.getElapsed();
+      if (this.skyMaterial) this.skyMaterial.uniforms.time.value = elapsed;
       for (const fn of this.onFrame) fn(dt, elapsed);
       this.controls.update();
       this.composer.render();
@@ -165,8 +190,13 @@ export class Viewer {
         // Dark enough that the stars read and the skyline stays the brightest thing in frame.
         // A saturated sky at full brightness reads as a painted wall, not as night.
         horizonColor: { value: new THREE.Color(HORIZON) },
+        lowColor: { value: new THREE.Color(HORIZON) },
         midColor: { value: new THREE.Color(0x0d0722) },
         topColor: { value: new THREE.Color(0x03030a) },
+        cloudColor: { value: new THREE.Color(0xffffff) },
+        /** 0 at night, 1 in daylight. Clouds are a day-only feature. */
+        cloudAmount: { value: 0 },
+        time: { value: 0 },
       },
       vertexShader: /* glsl */ `
         varying vec3 vWorldPosition;
@@ -177,15 +207,63 @@ export class Viewer {
       `,
       fragmentShader: /* glsl */ `
         uniform vec3 horizonColor;
+        uniform vec3 lowColor;
         uniform vec3 midColor;
         uniform vec3 topColor;
+        uniform vec3 cloudColor;
+        uniform float cloudAmount;
+        uniform float time;
         varying vec3 vWorldPosition;
+
+        float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+
+        float noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(
+            mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+            mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+            u.y
+          );
+        }
+
+        float fbm(vec2 p) {
+          float v = 0.0;
+          float a = 0.5;
+          for (int i = 0; i < 5; i++) {
+            v += a * noise(p);
+            p *= 2.02;
+            a *= 0.5;
+          }
+          return v;
+        }
+
         void main() {
-          float h = normalize(vWorldPosition).y;
-          // Tight bands near the horizon: at this camera elevation almost all of the visible
-          // dome sits in the lowest part of the gradient.
-          vec3 c = mix(horizonColor, midColor, smoothstep(-0.02, 0.12, h));
-          c = mix(c, topColor, smoothstep(0.10, 0.45, h));
+          vec3 dir = normalize(vWorldPosition);
+          float h = dir.y;
+
+          // The whole gradient is compressed into roughly h in [0, 0.32]. At this camera
+          // elevation that narrow band is all of the sky actually on screen, so spreading the
+          // stops over the full dome shows nothing but the palest one.
+          vec3 c = mix(horizonColor, lowColor, smoothstep(-0.015, 0.05, h));
+          c = mix(c, midColor, smoothstep(0.035, 0.14, h));
+          c = mix(c, topColor, smoothstep(0.12, 0.34, h));
+
+          if (cloudAmount > 0.001 && h > 0.0) {
+            // Project the view direction onto a flat deck overhead, so clouds compress toward
+            // the horizon the way a real cloud layer does.
+            vec2 uv = dir.xz / (h + 0.22) * 0.85;
+            uv += time * 0.004;
+            // Broken cloud, not overcast — the blue has to stay the dominant colour.
+            float cover = smoothstep(0.56, 0.84, fbm(uv * 1.4));
+            // Fade out near the horizon, where the deck would be edge-on and far away.
+            float fade = smoothstep(0.0, 0.20, h);
+            c = mix(c, cloudColor, cover * fade * cloudAmount * 0.8);
+          }
+
           gl_FragColor = vec4(c, 1.0);
         }
       `,
@@ -194,17 +272,118 @@ export class Viewer {
       fog: false,
     });
 
+    this.skyMaterial = material;
     const sky = new THREE.Mesh(new THREE.SphereGeometry(1300, 48, 32), material);
     this.scene.add(sky);
   }
 
   private addNightLights(): void {
-    // Just enough to keep unlit faces from going pure black. The city lights itself.
-    this.scene.add(new THREE.HemisphereLight(0x2a3550, 0x05060a, 0.55));
+    // Just enough to keep unlit faces from going pure black. At night the city lights itself.
+    this.hemi = new THREE.HemisphereLight(0x2a3550, 0x05060a, 0.55);
+    this.scene.add(this.hemi);
 
-    const moon = new THREE.DirectionalLight(0x9fb8e8, 0.35);
-    moon.position.set(-80, 120, -60);
-    this.scene.add(moon);
+    this.key = new THREE.DirectionalLight(0x9fb8e8, 0.35);
+    this.key.position.set(-260, 340, -190);
+    this.scene.add(this.key);
+  }
+
+  /**
+   * The moon, which becomes the sun in day mode.
+   *
+   * Sits just inside the star shell and well outside the city, and is bright enough to clear the
+   * bloom threshold so it carries a halo rather than reading as a flat disc.
+   */
+  private addMoon(): void {
+    this.moonMaterial = new THREE.MeshBasicMaterial({ color: 0xf4f0ff, fog: false });
+    this.moon = new THREE.Mesh(new THREE.SphereGeometry(26, 32, 24), this.moonMaterial);
+    this.moon.position.set(-300, 390, -220);
+    this.scene.add(this.moon);
+
+    // Halo. A bare disc reads as a sticker pasted on the sky; the falloff is what makes it look
+    // like a light source.
+    const size = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    gradient.addColorStop(0, 'rgba(255,255,255,0.95)');
+    gradient.addColorStop(0.16, 'rgba(255,238,205,0.5)');
+    gradient.addColorStop(0.42, 'rgba(255,190,140,0.16)');
+    gradient.addColorStop(1, 'rgba(255,170,120,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    this.glowMaterial = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    });
+    // Sibling of the disc rather than a child: parenting it would multiply the sun's own scale
+    // into the halo and the glow would end up smaller than the thing it is supposed to surround.
+    this.glow = new THREE.Sprite(this.glowMaterial);
+    this.glow.scale.setScalar(240);
+    this.glow.position.copy(this.moon.position);
+    this.scene.add(this.glow);
+  }
+
+  /** Swap the whole scene between night and day. */
+  setTimeOfDay(mode: 'day' | 'night'): void {
+    const day = mode === 'day';
+    this.timeOfDay = mode;
+    this.city.setTimeOfDay(mode);
+
+    // Natural daylight: pale haze at the horizon deepening to blue overhead, with a drifting
+    // cloud deck. Anything warmer than this tips the whole city yellow.
+    const uniforms = this.skyMaterial?.uniforms;
+    if (uniforms) {
+      uniforms.horizonColor.value.setHex(day ? 0xffb765 : HORIZON);
+      uniforms.lowColor.value.setHex(day ? 0xf9683f : HORIZON);
+      uniforms.midColor.value.setHex(day ? 0xb2478c : 0x0d0722);
+      uniforms.topColor.value.setHex(day ? 0x172a72 : 0x03030a);
+      uniforms.cloudColor.value.setHex(day ? 0xffd2c0 : 0xffffff);
+      uniforms.cloudAmount.value = day ? 1 : 0;
+    }
+
+    for (const layer of this.starLayers) layer.visible = !day;
+
+    // The lighting is kept close to neutral even at sunset. Warm light on warm facades tips the
+    // whole city yellow and every building loses its own colour.
+    if (this.hemi) {
+      this.hemi.color.setHex(day ? 0xd8dcea : 0x2a3550);
+      this.hemi.groundColor.setHex(day ? 0x585460 : 0x05060a);
+      this.hemi.intensity = day ? 1 : 0.55;
+    }
+    if (this.key) {
+      this.key.color.setHex(day ? 0xffe2c4 : 0x9fb8e8);
+      this.key.intensity = day ? 1.7 : 0.35;
+      // Low and to one side, so buildings catch a raking sunset light.
+      this.key.position.set(day ? -430 : -260, day ? 150 : 340, day ? -110 : -190);
+    }
+    if (this.moon && this.moonMaterial) {
+      this.moonMaterial.color.setHex(day ? 0xfff0cf : 0xf4f0ff);
+      // The sun sits low near the horizon; the moon rides high.
+      this.moon.position.set(day ? -540 : -300, day ? 120 : 390, day ? -240 : -220);
+      this.moon.scale.setScalar(day ? 1.9 : 1);
+    }
+    if (this.glow && this.glowMaterial && this.moon) {
+      this.glowMaterial.color.setHex(day ? 0xffa25e : 0xbcc6ff);
+      this.glowMaterial.opacity = day ? 1 : 0.45;
+      this.glow.scale.setScalar(day ? 420 : 150);
+      this.glow.position.copy(this.moon.position);
+    }
+
+    this.bloom.strength = day ? 0.3 : 0.45;
+
+    if (this.scene.fog instanceof THREE.Fog) {
+      this.scene.fog.color.setHex(day ? 0xff8a5c : HORIZON);
+    }
+    this.applyFogRange();
+    this.renderer.toneMappingExposure = day ? 1 : 1.1;
   }
 
   /**
@@ -248,7 +427,7 @@ export class Viewer {
         }),
       );
       this.scene.add(points);
-      if (!this.stars) this.stars = points;
+      this.starLayers.push(points);
     }
   }
 
