@@ -109,6 +109,18 @@ export function openAccount(actions: AccountActions): void {
   out.textContent = 'Sign out';
   out.addEventListener('click', async () => {
     out.disabled = true;
+    out.textContent = 'Saving…';
+    // Signing out clears this device, so anything not yet in the account has to go up first.
+    // If it cannot, say so and stay signed in rather than quietly dropping someone's city.
+    try {
+      await syncCity(session.user.id);
+    } catch {
+      note.textContent =
+        'Could not reach your account, so nothing was signed out. Your city is still here. Try again in a moment.';
+      out.disabled = false;
+      out.textContent = 'Sign out';
+      return;
+    }
     await signOut();
     panel.close();
   });

@@ -40,6 +40,7 @@ import {
   isEmpty,
   logCommitment,
   unlogCommitment,
+  wipeCity,
 } from './data/store';
 
 /**
@@ -282,8 +283,18 @@ if (params.has('debug2d')) {
 
   onAuthChange(async (next) => {
     const signedIn = !session && next;
+    const signedOut = Boolean(session) && !next;
     session = next;
     paintAccount();
+
+    if (signedOut) {
+      // Clear the device on the way out. The city is safe in the account, and leaving it here
+      // would mean the next person to sign in on this browser has a stranger's entries merged
+      // into their own account by the additive sync.
+      await wipeCity();
+      await showLanding();
+      return;
+    }
     // Merge on sign-in so the city built before an account existed is carried up rather than
     // being replaced by an empty one.
     if (signedIn && next) {
@@ -379,7 +390,9 @@ if (params.has('debug2d')) {
   // to anything — there is no protected data on this side of the door, only sync.
   const skipLanding = params.has('local');
 
-  if (!session && !skipLanding) {
+  // Declared, not assigned, so it can be called from the auth handler above on sign-out.
+  async function showLanding(): Promise<void> {
+    if (landing) return;
     topbar.style.opacity = '0';
     controlsBar.style.opacity = '0';
 
@@ -391,11 +404,13 @@ if (params.has('debug2d')) {
     mode = 'day';
     viewer.setTimeOfDay(mode);
     dayNight.textContent = 'Night';
+    dayNight.setAttribute('aria-pressed', 'true');
     viewer.cinematicView(layoutCity(city, todayISO()));
 
     landing = openLanding({
       onSignIn: () => signInWithGoogle(),
       onContinueLocally: async () => {
+        landing = null;
         demo = false;
         await refresh({ reframe: true });
         revealApp();
@@ -404,6 +419,10 @@ if (params.has('debug2d')) {
         }
       },
     });
+  }
+
+  if (!session && !skipLanding) {
+    await showLanding();
   } else if (await isEmpty()) {
     // Signed in with nothing built yet: go straight to the first win rather than an empty plane.
     document.querySelector<HTMLButtonElement>('#log-win')!.click();

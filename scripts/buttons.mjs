@@ -29,7 +29,7 @@ const browser = await chromium.launch({
   args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--use-gl=angle'],
 });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-const page = await context.newPage();
+let page = await context.newPage();
 
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
@@ -76,6 +76,16 @@ try {
   check('backdrop click dismisses a panel', (await count('.panel--glass')) === 0);
 
   // ------------------------------------------------------------------- app
+  //
+  // A fresh page rather than navigating this one. Tearing down a live WebGL context and rAF loop
+  // on a software GL surface takes longer than any sane navigation timeout.
+  await page.close();
+  page = await context.newPage();
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('dialog', (d) => d.accept());
   await page.goto(`${base}?local=1`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
   await page.waitForTimeout(9000);
   check('?local reaches the app', (await count('.landing')) === 0);
