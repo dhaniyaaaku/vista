@@ -1,8 +1,8 @@
-/**
+﻿/**
  * App entry point.
  *
  * Renders the 3D city by default. Append `?debug2d` to the URL for the top-down layout view with
- * its automated checks — that view stays in the build because when the city looks wrong, it is the
+ * its automated checks â€” that view stays in the build because when the city looks wrong, it is the
  * fastest way to tell a layout bug from a render bug.
  */
 
@@ -94,14 +94,14 @@ if (params.has('islands')) {
     const checks = drawIslands(canvas, layoutIslands(city, asOf));
     const failed = checks.filter((c) => !c.passed);
     if (failed.length > 0) {
-      console.warn('Island checks failed:', failed.map((c) => `${c.name} — ${c.detail}`));
+      console.warn('Island checks failed:', failed.map((c) => `${c.name} â€” ${c.detail}`));
     }
   };
   scrub.addEventListener('input', render);
   window.addEventListener('resize', render);
   render();
 } else if (params.has('sunflower')) {
-  // A visual answer to "do the buildings get bigger further out?" — they do not, and this draws
+  // A visual answer to "do the buildings get bigger further out?" â€” they do not, and this draws
   // them at true footprint so that is verifiable rather than asserted.
   if (city.entries.length < 200) city = buildDemoCity();
   const render = () => drawSunflowerExplainer(canvas, city);
@@ -160,13 +160,12 @@ if (params.has('islands')) {
     const asOf = addDays(first, Number(scrub.value));
     scrubDate.textContent = formatLongDate(asOf);
 
-    const layout = layoutCity(city, asOf);
-    viewer.setLayout(layout);
+    viewer.setLayout(layoutIslands(city, asOf));
 
     // Framed once against the finished city, so scrubbing back never yanks the camera. Reframed
     // only when the city changes shape enough to warrant it.
     if (!framed || options.reframe) {
-      viewer.frameCity(layoutCity(city, todayISO()));
+      viewer.frameCity(layoutIslands(city, todayISO()));
       framed = true;
     }
 
@@ -391,14 +390,14 @@ if (params.has('islands')) {
     scrubDate.textContent = formatLongDate(asOf);
     hovered = null;
     card.hide();
-    viewer.setLayout(layoutCity(city, asOf));
+    viewer.setLayout(layoutIslands(city, asOf));
   });
 
   // --- staging a full city for a demo recording -------------------------
   //
   // `?seed` writes a complete eighteen-month city into this browser as ordinary entries, then
   // pushes it to the signed-in account so it is there on any device. Explicit and confirmed,
-  // never automatic — it is a recording aid, not a feature.
+  // never automatic â€” it is a recording aid, not a feature.
 
   if (params.has('seed')) {
     const staged = buildSeededCity();
@@ -428,7 +427,7 @@ if (params.has('islands')) {
   // --- landing ----------------------------------------------------------
   //
   // Shown whenever nobody is signed in. The background is the example city, purely so the scene
-  // has something in it — it is scenery behind the sign-in door, never offered as a destination.
+  // has something in it â€” it is scenery behind the sign-in door, never offered as a destination.
 
   const topbar = document.querySelector<HTMLElement>('#topbar')!;
   const controlsBar = document.querySelector<HTMLElement>('#controls')!;
@@ -438,12 +437,12 @@ if (params.has('islands')) {
     controlsBar.style.transition = 'opacity 500ms ease';
     topbar.style.opacity = '1';
     controlsBar.style.opacity = '1';
-    viewer.restoreAppView(layoutCity(city, todayISO()));
+    viewer.restoreAppView(layoutIslands(city, todayISO()));
   }
 
   // `?local` skips the sign-in door and uses the app purely on-device. It exists for automated
   // tests and development, which otherwise cannot get past an OAuth redirect. It grants no access
-  // to anything — there is no protected data on this side of the door, only sync.
+  // to anything â€” there is no protected data on this side of the door, only sync.
   const skipLanding = params.has('local');
 
   // Declared, not assigned, so it can be called from the auth handler above on sign-out.
@@ -458,7 +457,7 @@ if (params.has('islands')) {
     // Sunset behind the landing copy. The low camera is the only framing where the sky is on
     // screen at all, so the landing forces day mode whatever the app is set to.
     setMode('sunset');
-    viewer.cinematicView(layoutCity(city, todayISO()));
+    viewer.cinematicView(layoutIslands(city, todayISO()));
 
     landing = openLanding({
       onSignIn: () => signInWithGoogle(),

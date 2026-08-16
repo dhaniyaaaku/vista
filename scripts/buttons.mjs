@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Every interactive control, exercised.
  *
  * Clicks are dispatched through the DOM rather than Playwright's `click`, deliberately. Playwright
@@ -22,7 +22,7 @@ const base = flag('url', 'http://localhost:5173');
 const results = [];
 const check = (name, passed, detail = '') => {
   results.push({ name, passed });
-  console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
+  console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ` â€” ${detail}` : ''}`);
 };
 
 const browser = await chromium.launch({
@@ -57,14 +57,14 @@ try {
   check('sign-in button present', (await count('.btn-google')) === 1);
   check('no explore/demo escape offered', (await count('.landing__fallback:not([hidden])')) === 0);
 
-  check('"How it works" opens', (await click('.landing__how')) && ((await settle()), (await count('.panel--glass')) === 1));
-  check('panel close button dismisses it', (await click('.panel__close')) && ((await settle()), (await count('.panel--glass')) === 0));
+  check('"How it works" opens', (await click('.landing__how')) && ((await settle()), (await count('.panel')) === 1));
+  check('panel close button dismisses it', (await click('.panel__close')) && ((await settle()), (await count('.panel')) === 0));
 
   await click('.landing__how');
   await settle();
   await page.keyboard.press('Escape');
   await settle();
-  check('Escape dismisses a panel', (await count('.panel--glass')) === 0);
+  check('Escape dismisses a panel', (await count('.panel')) === 0);
 
   await click('.landing__how');
   await settle();
@@ -73,7 +73,7 @@ try {
     bd.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
   });
   await settle();
-  check('backdrop click dismisses a panel', (await count('.panel--glass')) === 0);
+  check('backdrop click dismisses a panel', (await count('.panel')) === 0);
 
   // ------------------------------------------------------------------- app
   //
@@ -112,9 +112,13 @@ try {
 
   await page.fill('.input--lead', 'button sweep win');
   await click('.form .btn--primary');
-  await settle(2600);
+  // Every write rebuilds the scene, which is slow on software GL. Generous throughout.
+  await settle(9000);
   check('log form submits', (await count('.panel')) === 0);
-  check('win reached the city', ((await page.textContent('#brand-sub')) ?? '').startsWith('1 win'));
+  check(
+    'win reached the city',
+    ((await page.textContent('#brand-sub', { timeout: 60_000 })) ?? '').startsWith('1 win'),
+  );
 
   // ---------------------------------------------------------- commitments
   check('topbar: Commitments', (await click('#open-commitments')) && ((await settle()), (await count('.panel')) === 1));
@@ -126,12 +130,12 @@ try {
   check('commitment: Add', (await count('.commitment')) === 1);
 
   await click('.commitment__check');
-  await settle(4000);
+  await settle(9000);
   const done = await page.textContent('.commitment__detail');
   check('commitment: tick adds a floor', (done ?? '').startsWith('1 floor'), done ?? '');
 
   await click('.commitment__check');
-  await settle(4000);
+  await settle(9000);
   const undone = await page.textContent('.commitment__detail');
   check('commitment: untick removes it again', (undone ?? '').startsWith('0 floor'), undone ?? '');
 
@@ -144,13 +148,16 @@ try {
   // --------------------------------------------------------------- settings
   check('topbar: Settings', (await click('#open-settings')) && ((await settle()), (await count('.settings')) === 1));
 
+  // Generous: switching to the example builds two islands and a few thousand objects, which takes
+  // a while on a software GL surface.
+  const brand = () => page.textContent('#brand-sub', { timeout: 60_000 });
   const demoBtn = '.settings__row:nth-child(1) .btn';
   await click(demoBtn);
-  await settle(2600);
-  check('settings: show the example', ((await page.textContent('#brand-sub')) ?? '').includes('example'));
+  await settle(14_000);
+  check('settings: show the example', ((await brand()) ?? '').includes('example'));
   await click(demoBtn);
-  await settle(2600);
-  check('settings: back to my city', !((await page.textContent('#brand-sub')) ?? '').includes('example'));
+  await settle(14_000);
+  check('settings: back to my city', !((await brand()) ?? '').includes('example'));
 
   const download = await page.waitForEvent('download', { timeout: 15_000 }).catch(() => null);
   const downloadStarted = page.evaluate(() =>
@@ -172,11 +179,15 @@ try {
   await settle();
 
   // ------------------------------------------------------ scene controls
-  const before = await page.getAttribute('#daynight', 'aria-pressed');
-  await click('#daynight');
-  await settle(1200);
-  const after = await page.getAttribute('#daynight', 'aria-pressed');
-  check('controls: day/night toggles', before !== after, `${before} -> ${after}`);
+  const modes = await count('#timeofday button');
+  check('controls: three time-of-day modes', modes === 3, `${modes} buttons`);
+
+  for (const mode of ['sunset', 'day', 'night']) {
+    await click(`#timeofday button[data-mode="${mode}"]`);
+    await settle(1400);
+    const pressed = await page.getAttribute(`#timeofday button[data-mode="${mode}"]`, 'aria-pressed');
+    check(`controls: ${mode} selects`, pressed === 'true', `aria-pressed=${pressed}`);
+  }
 
   const label = await page.textContent('#scrub-date');
   await page.evaluate(() => {

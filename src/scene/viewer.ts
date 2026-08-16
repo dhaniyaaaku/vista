@@ -1,9 +1,9 @@
-/**
+﻿/**
  * Renderer, camera, night lighting, and the frame loop.
  *
  * Two things carry the look. The camera is long-lensed and high, because that near-orthographic
  * compression is most of what makes a scene read as a miniature rather than a game level. And
- * almost nothing is actually lit — the city is emissive surfaces against near-black, with bloom
+ * almost nothing is actually lit â€” the city is emissive surfaces against near-black, with bloom
  * doing the rest, which is both closer to how a city looks from the air at night and far cheaper
  * than lighting two thousand buildings.
  */
@@ -15,7 +15,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { CityScene } from './city';
-import type { CityLayout } from '../layout/polar';
+import type { IslandLayout } from '../layout/islands';
 
 /** Horizon colour. Fog matches it so the outer city dissolves into the sky rather than a wall. */
 /**
@@ -53,12 +53,14 @@ export class Viewer {
   private glowMaterial: THREE.SpriteMaterial | null = null;
   private fitDistance = 200;
   private timeOfDay: TimeOfDay = 'night';
+  /** Centre of the scene, so sky bodies stay far away rather than landing inside the islands. */
+  private skyOrigin = new THREE.Vector3();
 
   /**
    * Fog range, which has to differ sharply by mode.
    *
    * At night fog sits close, so the outer city dissolves into the sky. In daylight the same range
-   * buries the whole city in white haze — daylight fog has to start well beyond the city and only
+   * buries the whole city in white haze â€” daylight fog has to start well beyond the city and only
    * touch the far edge.
    */
   private applyFogRange(): void {
@@ -79,7 +81,7 @@ export class Viewer {
       canvas,
       antialias: true,
       powerPreference: 'high-performance',
-      // Only for scripts/shot.mjs, which reads the framebuffer directly — Playwright's own
+      // Only for scripts/shot.mjs, which reads the framebuffer directly â€” Playwright's own
       // capture deadlocks against a continuous rAF loop on a software GL surface. Costs real
       // performance on some GPUs, so it stays off unless explicitly asked for.
       preserveDrawingBuffer: new URLSearchParams(location.search).has('capture'),
@@ -114,9 +116,9 @@ export class Viewer {
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(
       new THREE.Vector2(1, 1),
-      0.7, // strength — enough to halo the lights, not enough to smear the city into a cloud
+      0.7, // strength â€” enough to halo the lights, not enough to smear the city into a cloud
       0.55, // radius
-      0.32, // threshold — milestones and the brightest windows bloom, the bulk of the city does not
+      0.32, // threshold â€” milestones and the brightest windows bloom, the bulk of the city does not
     );
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
@@ -125,25 +127,28 @@ export class Viewer {
     window.addEventListener('resize', () => this.resize());
   }
 
-  setLayout(layout: CityLayout): void {
+  setLayout(layout: IslandLayout): void {
     this.city.setLayout(layout);
   }
 
   /** Point the camera at the whole city. Called once, not on every scrub, so the view stays put. */
-  frameCity(layout: CityLayout): void {
+  frameCity(layout: IslandLayout): void {
     // Frame the inner city rather than the whole disc. Fitting everything puts each building at
-    // about two pixels, which no amount of lighting can rescue — the outer rings are better left
+    // about two pixels, which no amount of lighting can rescue â€” the outer rings are better left
     // to fall away into fog, the way a real skyline does.
-    const radius = Math.max(layout.radius, 24) * 0.82;
+    // Fit the whole archipelago. Cropping made sense for a single disc where the outer rings could
+    // fall away into fog, but here the islands are the subject and losing one off the frame edge
+    // hides an entire year.
+    const radius = Math.max(layout.radius, 24) * 1.08;
     // The city is the subject, so the default view stays high enough to read it properly. That
-    // means little sky is in frame by default — which is fine. The horizon fix below is what
+    // means little sky is in frame by default â€” which is fine. The horizon fix below is what
     // makes the sunset correct *when you orbit down to it*, rather than forcing every frame to
     // be a landscape shot at the city's expense.
     const elevation = 0.52; // radians above the horizon, ~30 degrees
 
     // Distance is derived from the lens rather than guessed, against both screen axes. The city
     // is a disc, so its horizontal extent is the full diameter while its vertical extent is
-    // foreshortened by the viewing angle — fitting to only one axis over- or under-shoots badly.
+    // foreshortened by the viewing angle â€” fitting to only one axis over- or under-shoots badly.
     const halfFovV = (this.camera.fov * Math.PI) / 360;
     const halfFovH = Math.atan(Math.tan(halfFovV) * this.camera.aspect);
     const distance =
@@ -152,13 +157,15 @@ export class Viewer {
         (radius * Math.sin(elevation)) / Math.tan(halfFovV),
       ) * 1.05;
 
+    // The archipelago is not centred on the origin once there is more than one island, so the
+    // camera has to orbit its actual middle rather than world zero.
     this.camera.position.set(
-      Math.cos(elevation) * Math.cos(Math.PI * 0.25) * distance,
+      layout.centerX + Math.cos(elevation) * Math.cos(Math.PI * 0.25) * distance,
       Math.sin(elevation) * distance,
-      Math.cos(elevation) * Math.sin(Math.PI * 0.25) * distance,
+      layout.centerZ + Math.cos(elevation) * Math.sin(Math.PI * 0.25) * distance,
     );
 
-    this.controls.target.set(0, 6, 0);
+    this.controls.target.set(layout.centerX, 6, layout.centerZ);
     this.controls.minDistance = radius * 0.35;
     this.controls.maxDistance = distance * 1.7;
     this.controls.update();
@@ -166,6 +173,10 @@ export class Viewer {
     // Fog has to follow the framing, or the whole city sits inside it and greys out.
     this.fitDistance = distance;
     this.applyFogRange();
+    // The sun and moon are placed relative to the scene's centre. Left at fixed world coordinates
+    // they end up sitting inside the archipelago once it stops being centred on the origin.
+    this.skyOrigin.set(layout.centerX, 0, layout.centerZ);
+    this.setTimeOfDay(this.timeOfDay);
   }
 
   /**
@@ -176,9 +187,9 @@ export class Viewer {
    * one drops to a low aerial and pitches up, so the skyline sits in the lower third against a
    * full sunset. Same scene, different lens.
    */
-  cinematicView(layout: CityLayout): void {
+  cinematicView(layout: IslandLayout): void {
     const radius = Math.max(layout.radius, 24);
-    const elevation = 0.21; // ~12 degrees — low enough that most of the frame is sky
+    const elevation = 0.21; // ~12 degrees â€” low enough that most of the frame is sky
 
     const halfFovV = (this.camera.fov * Math.PI) / 360;
     // Close enough that the skyline has presence. Fitting the whole disc from this low an angle
@@ -202,7 +213,7 @@ export class Viewer {
   }
 
   /** Restore the ordinary app framing after the landing page is dismissed. */
-  restoreAppView(layout: CityLayout): void {
+  restoreAppView(layout: IslandLayout): void {
     this.controls.autoRotateSpeed = 0.28;
     this.frameCity(layout);
   }
@@ -233,7 +244,7 @@ export class Viewer {
    * Gradient sky dome.
    *
    * A flat background colour makes the city look like it was cut out and pasted onto black. A
-   * three-stop vertical gradient — violet at the horizon through indigo to near-black overhead —
+   * three-stop vertical gradient â€” violet at the horizon through indigo to near-black overhead â€”
    * gives the scene depth and somewhere for the skyline to sit against.
    *
    * Colours go through THREE.Color, so they are converted from sRGB into the linear working space
@@ -329,7 +340,7 @@ export class Viewer {
             // the horizon the way a real cloud layer does.
             vec2 uv = dir.xz / (h + 0.22) * 0.85;
             uv += time * 0.004;
-            // Broken cloud, not overcast — the blue has to stay the dominant colour.
+            // Broken cloud, not overcast â€” the blue has to stay the dominant colour.
             float cover = smoothstep(0.56, 0.84, fbm(uv * 1.4));
             // Fade out near the horizon, where the deck would be edge-on and far away.
             float fade = smoothstep(0.0, 0.20, h);
@@ -494,9 +505,13 @@ export class Viewer {
     }
     if (this.moon && this.moonMaterial) {
       this.moonMaterial.color.setHex(clear ? 0xfffdf0 : sunset ? 0xfff0cf : 0xf4f0ff);
-      if (clear) this.moon.position.set(-380, 520, -300);
-      else if (sunset) this.moon.position.set(-540, 120, -240);
-      else this.moon.position.set(-300, 390, -220);
+      // Offset from the scene centre, and scaled with how far back the camera sits, so the sun
+      // stays in the sky rather than parked among the islands.
+      const far = Math.max(this.fitDistance, 220);
+      const o = this.skyOrigin;
+      if (clear) this.moon.position.set(o.x - far * 1.6, far * 2.2, o.z - far * 1.3);
+      else if (sunset) this.moon.position.set(o.x - far * 2.3, far * 0.5, o.z - far * 1.0);
+      else this.moon.position.set(o.x - far * 1.3, far * 1.7, o.z - far * 0.95);
       this.moon.scale.setScalar(sunset ? 1.9 : 1.1);
     }
     if (this.glow && this.glowMaterial && this.moon) {
@@ -518,7 +533,7 @@ export class Viewer {
   /**
    * Layered star field.
    *
-   * Three passes at different sizes and opacities rather than one uniform sprinkle — a real sky
+   * Three passes at different sizes and opacities rather than one uniform sprinkle â€” a real sky
    * has a few bright stars over a haze of faint ones, and a single uniform layer reads as noise.
    * They sit low in the sky too, so they are visible above the skyline rather than only overhead.
    */

@@ -236,6 +236,106 @@ export function makeGroundTexture(): THREE.Texture {
   return texture;
 }
 
+/** Water between the islands. Dark and faintly reflective, so islands read as land. */
+export function makeWaterMaterial(): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: 0x081426,
+    roughness: 0.22,
+    metalness: 0.75,
+  });
+}
+
+/** Island ground. */
+export function makeIslandMaterial(): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({ color: 0x16182a, roughness: 1, metalness: 0 });
+}
+
+/** The bridge between two years. Lit, because it is the thread joining them. */
+export function makeBridgeMaterial(): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: 0x2a2540,
+    roughness: 0.5,
+    emissive: 0xffc98a,
+    emissiveIntensity: 0.55,
+  });
+}
+
+/** Billboards for months not yet built. */
+export function makeBillboardMaterial(): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: 0x3a4256,
+    roughness: 0.85,
+    emissive: 0x8fa4c8,
+    emissiveIntensity: 0.32,
+  });
+}
+
+/** Gardens and groves earned by consistency. Self-lit so green still reads at night. */
+export function makeGardenMaterial(tint: number): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: 0x1d3a26,
+    roughness: 0.9,
+    emissive: tint,
+    emissiveIntensity: 0.5,
+  });
+}
+
+/** Monuments. Pale stone, lit, meant to be the landmark of a finished year. */
+export function makeMonumentMaterial(): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: 0x2c2a3a,
+    roughness: 0.42,
+    metalness: 0.3,
+    emissive: 0xffe6c0,
+    emissiveIntensity: 0.62,
+  });
+}
+
+/**
+ * A tower's own facade, one row per expected occurrence.
+ *
+ * Rows are lit where the commitment was kept and dark where it was missed, so the tower is a
+ * legible record of the year rather than decoration. Expected occurrences come from the declared
+ * cadence rather than from calendar days: one row per day would leave a twice-monthly commitment
+ * 93 percent dark and unable to ever earn a monument.
+ */
+export function makeTowerFacadeTexture(litRatio: number, seed: number): THREE.Texture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, size, size);
+
+  const cols = 8;
+  const rows = 26;
+  const cellW = size / cols;
+  const cellH = size / rows;
+
+  let state = seed >>> 0;
+  const rand = () => {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    return state / 4294967296;
+  };
+
+  for (let r = 0; r < rows; r += 1) {
+    // Whole floors are lit or dark together: a floor is one occurrence, kept or missed.
+    if (rand() > litRatio) continue;
+    for (let c = 0; c < cols; c += 1) {
+      if (rand() < 0.1) continue;
+      ctx.fillStyle = `rgba(255,255,255,${rand() < 0.5 ? 0.75 : 1})`;
+      ctx.fillRect(c * cellW + cellW * 0.22, r * cellH + cellH * 0.24, cellW * 0.56, cellH * 0.48);
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 /** Street lamps. Small, numerous, and the main thing that makes streets legible from the air. */
 export function makeLampMaterial(): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({

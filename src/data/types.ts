@@ -22,7 +22,13 @@ export type StructureKind =
   | 'bridge'
   | 'studio'
   | 'library'
-  | 'installation';
+  | 'installation'
+  // Earned or structural, rather than logged: rewards, signage, and year monuments.
+  | 'garden'
+  | 'billboard'
+  | 'monumentSpire'
+  | 'monumentDome'
+  | 'monumentArch';
 
 export type CadencePeriod = 'day' | 'week' | 'month';
 

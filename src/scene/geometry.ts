@@ -133,6 +133,140 @@ export function installationGeometry(): THREE.BufferGeometry {
   return geometry;
 }
 
+/** A billboard for a month not yet built: a panel on two posts. */
+export function billboardGeometry(): THREE.BufferGeometry {
+  const panel = new THREE.BoxGeometry(1.5, 0.62, 0.07);
+  panel.translate(0, 0.16, 0);
+  const left = new THREE.BoxGeometry(0.09, 0.6, 0.09);
+  left.translate(-0.5, -0.2, 0);
+  const right = new THREE.BoxGeometry(0.09, 0.6, 0.09);
+  right.translate(0.5, -0.2, 0);
+  return merged([panel, left, right]);
+}
+
+/** A flower bed: a low plinth under a scatter of blooms. */
+export function flowersGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const bed = new THREE.CylinderGeometry(0.5, 0.54, 0.14, 12);
+  bed.translate(0, -0.43, 0);
+  parts.push(bed);
+  for (let i = 0; i < 9; i += 1) {
+    const a = (i / 9) * Math.PI * 2;
+    const r = 0.16 + (i % 3) * 0.13;
+    const bloom = new THREE.SphereGeometry(0.09, 6, 5);
+    bloom.translate(Math.cos(a) * r, -0.24 + (i % 2) * 0.1, Math.sin(a) * r);
+    parts.push(bloom);
+  }
+  return merged(parts);
+}
+
+/** A fountain: a round basin with a central jet. */
+export function fountainGeometry(): THREE.BufferGeometry {
+  const basin = new THREE.CylinderGeometry(0.54, 0.58, 0.18, 16);
+  basin.translate(0, -0.41, 0);
+  const water = new THREE.CylinderGeometry(0.44, 0.44, 0.05, 16);
+  water.translate(0, -0.3, 0);
+  const column = new THREE.CylinderGeometry(0.08, 0.12, 0.5, 8);
+  column.translate(0, -0.02, 0);
+  const top = new THREE.SphereGeometry(0.16, 10, 8);
+  top.translate(0, 0.3, 0);
+  return merged([basin, water, column, top]);
+}
+
+/** A grove: several trees on a shared mound. */
+export function groveGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const mound = new THREE.CylinderGeometry(0.56, 0.6, 0.12, 12);
+  mound.translate(0, -0.44, 0);
+  parts.push(mound);
+  const spots: [number, number, number][] = [
+    [0, 0, 1],
+    [0.3, 0.24, 0.78],
+    [-0.28, -0.2, 0.86],
+    [0.18, -0.3, 0.7],
+  ];
+  for (const [dx, dz, s] of spots) {
+    const trunk = new THREE.CylinderGeometry(0.05, 0.06, 0.24 * s, 6);
+    trunk.translate(dx, -0.26, dz);
+    const canopy = new THREE.ConeGeometry(0.24 * s, 0.56 * s, 8);
+    canopy.translate(dx, -0.26 + 0.12 * s + 0.2 * s, dz);
+    parts.push(trunk, canopy);
+  }
+  return merged(parts);
+}
+
+/** A pavilion: a roofed shelter on four columns. */
+export function pavilionGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const base = new THREE.CylinderGeometry(0.56, 0.6, 0.12, 8);
+  base.translate(0, -0.44, 0);
+  parts.push(base);
+  for (let i = 0; i < 4; i += 1) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    const column = new THREE.CylinderGeometry(0.055, 0.055, 0.6, 6);
+    column.translate(Math.cos(a) * 0.34, -0.08, Math.sin(a) * 0.34);
+    parts.push(column);
+  }
+  const roof = new THREE.ConeGeometry(0.62, 0.34, 8);
+  roof.translate(0, 0.38, 0);
+  const finial = new THREE.SphereGeometry(0.08, 8, 6);
+  finial.translate(0, 0.56, 0);
+  parts.push(roof, finial);
+  return merged(parts);
+}
+
+/** A monument for a year kept well: a tapering spire on a stepped plinth. */
+export function monumentSpireGeometry(): THREE.BufferGeometry {
+  const plinth = new THREE.BoxGeometry(1, 0.12, 1);
+  plinth.translate(0, -0.44, 0);
+  const step = new THREE.BoxGeometry(0.74, 0.1, 0.74);
+  step.translate(0, -0.33, 0);
+  const shaft = new THREE.CylinderGeometry(0.1, 0.3, 0.86, 4);
+  shaft.rotateY(Math.PI / 4);
+  shaft.translate(0, 0.15, 0);
+  const tip = new THREE.ConeGeometry(0.1, 0.24, 4);
+  tip.rotateY(Math.PI / 4);
+  tip.translate(0, 0.7, 0);
+  return merged([plinth, step, shaft, tip]);
+}
+
+/** A monument: a dome on a colonnade. */
+export function monumentDomeGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const base = new THREE.CylinderGeometry(0.62, 0.66, 0.14, 16);
+  base.translate(0, -0.43, 0);
+  parts.push(base);
+  for (let i = 0; i < 8; i += 1) {
+    const a = (i / 8) * Math.PI * 2;
+    const column = new THREE.CylinderGeometry(0.06, 0.06, 0.5, 6);
+    column.translate(Math.cos(a) * 0.46, -0.11, Math.sin(a) * 0.46);
+    parts.push(column);
+  }
+  const drum = new THREE.CylinderGeometry(0.52, 0.54, 0.14, 16);
+  drum.translate(0, 0.21, 0);
+  const dome = new THREE.SphereGeometry(0.5, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+  dome.translate(0, 0.28, 0);
+  const finial = new THREE.ConeGeometry(0.07, 0.22, 8);
+  finial.translate(0, 0.87, 0);
+  parts.push(drum, dome, finial);
+  return merged(parts);
+}
+
+/** A monument: a triumphal arch. */
+export function monumentArchGeometry(): THREE.BufferGeometry {
+  const base = new THREE.BoxGeometry(1.1, 0.12, 0.5);
+  base.translate(0, -0.44, 0);
+  const left = new THREE.BoxGeometry(0.28, 0.78, 0.44);
+  left.translate(-0.38, 0.01, 0);
+  const right = new THREE.BoxGeometry(0.28, 0.78, 0.44);
+  right.translate(0.38, 0.01, 0);
+  const lintel = new THREE.BoxGeometry(1.06, 0.24, 0.48);
+  lintel.translate(0, 0.52, 0);
+  const cap = new THREE.BoxGeometry(0.72, 0.12, 0.36);
+  cap.translate(0, 0.7, 0);
+  return merged([base, left, right, lintel, cap]);
+}
+
 /** A street lamp: a thin pole with a lamp head, drawn at unit height. */
 export function lampGeometry(): THREE.BufferGeometry {
   const pole = new THREE.CylinderGeometry(0.035, 0.05, 0.86, 5);
