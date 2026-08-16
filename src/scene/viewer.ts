@@ -366,13 +366,20 @@ export class Viewer {
         uniform float time;
         varying vec3 vWorldPosition;
 
-        /* Red through violet across t in [0,1]. */
+        /*
+         * Red through violet across t in [0,1].
+         *
+         * Normalised by its own strongest channel so every band comes out fully saturated. The raw
+         * ramp overlaps heavily in the middle, which produces the washed-out pastel a rainbow
+         * should never be.
+         */
         vec3 spectrum(float t) {
-          return clamp(vec3(
+          vec3 s = clamp(vec3(
             1.6 - abs(4.0 * t - 3.0),
             1.6 - abs(4.0 * t - 2.0),
             1.6 - abs(4.0 * t - 1.0)
           ), 0.0, 1.0);
+          return s / (max(max(s.r, s.g), s.b) + 0.0001);
         }
 
         float hash(vec2 p) {
@@ -433,14 +440,11 @@ export class Viewer {
             float t = (ang - 25.0) / 1.7;
             if (t > 0.0 && t < 1.0) {
               // Red outermost, violet innermost, and soft at both edges.
-              // Pushed well past the pastel the raw ramp gives, so the bands actually read as red,
-              // green and violet rather than as a pale smear.
-              vec3 bow = spectrum(1.0 - t);
-              bow = pow(bow, vec3(0.55)) * 1.25;
+              vec3 bow = spectrum(1.0 - t) * 1.3;
               float strength = sin(t * 3.14159);
               // Fade it out as it reaches the ground, where a rainbow would end.
               float ground = smoothstep(-0.02, 0.06, h);
-              c = mix(c, bow, strength * ground * rainbow * 0.62);
+              c = mix(c, bow, strength * ground * rainbow * 0.85);
             }
           }
 
@@ -526,19 +530,21 @@ export class Viewer {
     const uniforms = this.skyMaterial?.uniforms;
     if (uniforms) {
       if (clear) {
-        // Bright blue, and saturated early: the visible band of sky sits low, so pale stops here
-        // wash the whole thing out to white.
-        uniforms.horizonColor.value.setHex(0x9fd4ff);
-        uniforms.lowColor.value.setHex(0x4aa2ee);
-        uniforms.midColor.value.setHex(0x1f76dd);
+        // Blue all the way down. Earlier stops faded to a pale haze near the horizon, and since
+        // the visible band of sky sits low, that pale stop was most of what you actually saw —
+        // the deep blue only ever showed in the very top of the frame.
+        uniforms.horizonColor.value.setHex(0x3d86dd);
+        uniforms.lowColor.value.setHex(0x2a6fd4);
+        uniforms.midColor.value.setHex(0x175ac6);
         uniforms.topColor.value.setHex(0x0a4bb5);
         uniforms.cloudColor.value.setHex(0xffffff);
       } else if (sunset) {
-        uniforms.horizonColor.value.setHex(0xffd9a0);
-        uniforms.lowColor.value.setHex(0xff8b4d);
-        uniforms.midColor.value.setHex(0xc2508a);
-        uniforms.topColor.value.setHex(0x1a2a6e);
-        uniforms.cloudColor.value.setHex(0xffd2c0);
+        // Vivid rather than pale for the same reason: the low stops are the ones on screen.
+        uniforms.horizonColor.value.setHex(0xff9020);
+        uniforms.lowColor.value.setHex(0xff5a2e);
+        uniforms.midColor.value.setHex(0xd63a7e);
+        uniforms.topColor.value.setHex(0x2a1f72);
+        uniforms.cloudColor.value.setHex(0xffc4a8);
       } else {
         uniforms.horizonColor.value.setHex(HORIZON);
         uniforms.lowColor.value.setHex(HORIZON);

@@ -232,6 +232,8 @@ export class CityScene {
   private meshes: THREE.InstancedMesh[] = [];
   private ground: THREE.Mesh | null = null;
   private decor: THREE.Object3D[] = [];
+  /** Tracked separately from other decor so the land can be lit differently by time of day. */
+  private islandDiscs: THREE.Mesh[] = [];
   /** Materials are keyed by kind-and-tint and reused across rebuilds. */
   private materials = new Map<string, THREE.MeshStandardMaterial>();
   private windowTexture: THREE.Texture;
@@ -315,6 +317,14 @@ export class CityScene {
       }
     }
 
+    // Land, lit by whatever is in the sky. Left dark it reads as a hole cut in the water rather
+    // than as an island.
+    const landColor =
+      this.timeOfDay === 'day' ? 0x5d7a4e : this.timeOfDay === 'sunset' ? 0x6b4b3e : 0x16182a;
+    for (const disc of this.islandDiscs) {
+      (disc.material as THREE.MeshStandardMaterial).color.setHex(landColor);
+    }
+
     // Water takes its colour from the sky it reflects, which is the whole point of it being water.
     // It is emphatically never tinted brown, which is what an earlier ground-tinting rule did to
     // it and why it looked like a mud flat.
@@ -322,14 +332,16 @@ export class CityScene {
       const material = this.ground.material as THREE.ShaderMaterial;
       const u = material.uniforms;
       if (u?.deepColor) {
+        // Sky colours here match the sky's own low stops, since that is what a flat surface
+        // reflects toward the horizon.
         if (this.timeOfDay === 'day') {
-          u.deepColor.value.setHex(0x0b3f6e);
-          u.skyColor.value.setHex(0x7fc4f5);
+          u.deepColor.value.setHex(0x07386b);
+          u.skyColor.value.setHex(0x3d86dd);
           u.sunColor.value.setHex(0xffffff);
           u.glitter.value = 1;
         } else if (this.timeOfDay === 'sunset') {
-          u.deepColor.value.setHex(0x2a1830);
-          u.skyColor.value.setHex(0xff9a5e);
+          u.deepColor.value.setHex(0x35132e);
+          u.skyColor.value.setHex(0xff7a2a);
           u.sunColor.value.setHex(0xffd9a0);
           u.glitter.value = 1.3;
         } else {
@@ -395,6 +407,7 @@ export class CityScene {
       );
       disc.position.set(island.x, -0.1, island.z);
       this.decor.push(disc);
+      this.islandDiscs.push(disc);
       this.group.add(disc);
 
       // A shoreline ring, brighter on the year being lived in.
@@ -700,6 +713,7 @@ export class CityScene {
       (mesh.material as THREE.Material)?.dispose();
     }
     this.decor = [];
+    this.islandDiscs = [];
 
     if (this.ground) {
       this.group.remove(this.ground);
