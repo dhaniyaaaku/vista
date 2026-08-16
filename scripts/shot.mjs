@@ -46,7 +46,9 @@ page.on('pageerror', (e) => messages.push(`[pageerror] ${e.message}`));
 const target = new URL(url);
 target.searchParams.set('capture', '1');
 
-await page.goto(target.toString(), { waitUntil: 'load' });
+// domcontentloaded, not load: top-level await in the entry module plus a continuous rAF loop on a
+// software GL surface means "load" can take longer than any sane timeout.
+await page.goto(target.toString(), { waitUntil: 'domcontentloaded', timeout: 60_000 });
 await page.waitForTimeout(wait);
 
 const click = flag('click', null);

@@ -236,12 +236,88 @@ export function makeGroundTexture(): THREE.Texture {
   return texture;
 }
 
-/** Water between the islands. Dark and faintly reflective, so islands read as land. */
-export function makeWaterMaterial(): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
-    color: 0x081426,
-    roughness: 0.22,
-    metalness: 0.75,
+/**
+ * Water between the islands.
+ *
+ * A flat lit plane never reads as water no matter what colour it is — it reads as a floor. Water
+ * is recognisable because of three things, all of which are cheap:
+ *
+ *   - Fresnel. Looking straight down you see the dark depths; looking out toward the horizon the
+ *     surface turns into a mirror of the sky. That gradient alone does most of the work.
+ *   - A moving surface. Two layers of drifting noise, one fine and one broad, so it never sits
+ *     still and never repeats visibly.
+ *   - Sun glitter. A tight specular highlight scattered by the ripples, which is the single most
+ *     recognisable thing about a body of water.
+ */
+export function makeWaterMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      deepColor: { value: new THREE.Color(0x050a18) },
+      skyColor: { value: new THREE.Color(0x2a1550) },
+      sunColor: { value: new THREE.Color(0xffe0b0) },
+      sunDirection: { value: new THREE.Vector3(-0.6, 0.5, -0.5).normalize() },
+      glitter: { value: 0.5 },
+      time: { value: 0 },
+    },
+    vertexShader: /* glsl */ `
+      varying vec3 vWorld;
+      void main() {
+        vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 deepColor;
+      uniform vec3 skyColor;
+      uniform vec3 sunColor;
+      uniform vec3 sunDirection;
+      uniform float glitter;
+      uniform float time;
+      varying vec3 vWorld;
+
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+      float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(
+          mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+          mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+          u.y
+        );
+      }
+
+      void main() {
+        vec3 view = normalize(cameraPosition - vWorld);
+
+        // Two drifting layers give a surface that moves without ever visibly repeating.
+        vec2 p = vWorld.xz * 0.035;
+        float ripple =
+          noise(p + vec2(time * 0.06, time * 0.04)) * 0.6 +
+          noise(p * 2.7 - vec2(time * 0.09, time * 0.05)) * 0.4;
+
+        // Perturb the surface normal by the slope of the ripples.
+        vec3 normal = normalize(vec3((ripple - 0.5) * 0.30, 1.0, (ripple - 0.5) * 0.30));
+
+        // Fresnel: depths underfoot, sky at the horizon. This is what makes it read as water.
+        float fres = pow(1.0 - clamp(dot(view, normal), 0.0, 1.0), 3.0);
+        vec3 c = mix(deepColor, skyColor, clamp(fres * 1.15, 0.0, 1.0));
+
+        // Sun glitter, broken up by the ripples so it scatters into a path rather than a disc.
+        // Note: "half" is a reserved word in GLSL and cannot be a variable name.
+        vec3 halfVec = normalize(view + normalize(sunDirection));
+        float spec = pow(max(dot(normal, halfVec), 0.0), 180.0);
+        c += sunColor * spec * glitter * (0.55 + ripple * 0.8);
+
+        gl_FragColor = vec4(c, 1.0);
+      }
+    `,
+    // Deliberately not fogged. A ShaderMaterial with `fog: true` needs THREE.UniformsLib.fog
+    // merged into its uniforms, and without them three throws inside refreshFogUniforms on every
+    // single frame. The fresnel term already fades the surface to the sky colour toward the
+    // horizon, which is the effect fog would have provided anyway.
+    fog: false,
   });
 }
 

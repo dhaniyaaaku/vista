@@ -196,11 +196,24 @@ const KIND_SPECS: Record<StructureKind, KindSpec> = {
   },
 };
 
-/** Milestone gems take their colour from the sky they hang in. */
+/**
+ * Milestone gems take their colour from the sky they hang in.
+ *
+ * Fully saturated on purpose. Tone mapping and bloom both pull colour toward white, so anything
+ * chosen to look right as a swatch arrives on screen as a pastel — these are picked to survive
+ * that rather than to look correct in a colour picker.
+ */
 const MILESTONE_TINTS: Record<string, number> = {
-  night: 0xff5fa8,
-  sunset: 0xff2d1f,
-  day: 0x7a20d8,
+  night: 0xff4f9e,
+  sunset: 0xff0d00,
+  day: 0x8800ff,
+};
+
+/** Gems have to out-shout a bright sky, so they burn hotter outside of night. */
+const MILESTONE_INTENSITY: Record<string, number> = {
+  night: 1.15,
+  sunset: 3.4,
+  day: 3.8,
 };
 
 /** Each garden kind gets its own green, so a month's reward is distinguishable. */
@@ -295,16 +308,47 @@ export class CityScene {
         // burning red at sunset, deep violet by day. They are meant to be the first thing the eye
         // finds in any mode.
         material.emissive.setHex(MILESTONE_TINTS[this.timeOfDay]);
-        material.emissiveIntensity = day ? nightEmissive * 1.25 : nightEmissive;
+        material.emissiveIntensity = MILESTONE_INTENSITY[this.timeOfDay];
+        material.color.setHex(0x000000);
       } else {
         material.emissiveIntensity = day ? nightEmissive * 0.7 : nightEmissive;
       }
     }
 
+    // Water takes its colour from the sky it reflects, which is the whole point of it being water.
+    // It is emphatically never tinted brown, which is what an earlier ground-tinting rule did to
+    // it and why it looked like a mud flat.
     if (this.ground) {
-      // The wash texture carries the shading, so this only tints it: warm earth by day, left
-      // untinted at night so the pool of light under the city shows through.
-      (this.ground.material as THREE.MeshStandardMaterial).color.setHex(day ? 0x9c8a76 : 0xffffff);
+      const material = this.ground.material as THREE.ShaderMaterial;
+      const u = material.uniforms;
+      if (u?.deepColor) {
+        if (this.timeOfDay === 'day') {
+          u.deepColor.value.setHex(0x0b3f6e);
+          u.skyColor.value.setHex(0x7fc4f5);
+          u.sunColor.value.setHex(0xffffff);
+          u.glitter.value = 1;
+        } else if (this.timeOfDay === 'sunset') {
+          u.deepColor.value.setHex(0x2a1830);
+          u.skyColor.value.setHex(0xff9a5e);
+          u.sunColor.value.setHex(0xffd9a0);
+          u.glitter.value = 1.3;
+        } else {
+          u.deepColor.value.setHex(0x03060f);
+          u.skyColor.value.setHex(0x2a1550);
+          u.sunColor.value.setHex(0xbcc6ff);
+          u.glitter.value = 0.45;
+        }
+      }
+    }
+    void day;
+  }
+
+  /** Drive the water's animation. Called from the frame loop. */
+  tick(elapsed: number, sunDirection: THREE.Vector3): void {
+    const material = this.ground?.material as THREE.ShaderMaterial | undefined;
+    if (material?.uniforms?.time) {
+      material.uniforms.time.value = elapsed;
+      material.uniforms.sunDirection.value.copy(sunDirection);
     }
   }
 

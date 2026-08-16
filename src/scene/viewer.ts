@@ -55,7 +55,6 @@ export class Viewer {
   private timeOfDay: TimeOfDay = 'night';
   /** Centre of the scene, so sky bodies stay far away rather than landing inside the islands. */
   private skyOrigin = new THREE.Vector3();
-  private planet: THREE.Group | null = null;
   private flight: {
     fromPos: THREE.Vector3;
     toPos: THREE.Vector3;
@@ -83,9 +82,11 @@ export class Viewer {
       this.scene.fog.far = this.fitDistance * 80;
       return;
     }
+    // Sunset keeps only a trace, far enough out that the islands stay crisp. Any nearer and the
+    // whole scene silts up with haze, which is what it was doing.
     const sunset = this.timeOfDay === 'sunset';
-    this.scene.fog.near = this.fitDistance * (sunset ? 1.8 : 0.9);
-    this.scene.fog.far = this.fitDistance * (sunset ? 7 : 3);
+    this.scene.fog.near = this.fitDistance * (sunset ? 6 : 1.4);
+    this.scene.fog.far = this.fitDistance * (sunset ? 18 : 4.5);
   }
 
   constructor(canvas: HTMLCanvasElement) {
@@ -128,7 +129,6 @@ export class Viewer {
     this.addNightLights();
     this.addStars();
     this.addMoon();
-    this.addPlanet();
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -296,6 +296,7 @@ export class Viewer {
       const dt = this.timer.getDelta();
       const elapsed = this.timer.getElapsed();
       if (this.skyMaterial) this.skyMaterial.uniforms.time.value = elapsed;
+      if (this.moon) this.city.tick(elapsed, this.moon.position.clone().normalize());
       for (const fn of this.onFrame) fn(dt, elapsed);
 
       if (this.flight) {
@@ -425,11 +426,17 @@ export class Viewer {
           if (rainbow > 0.001 && h > -0.02) {
             // A real rainbow is a ring 42 degrees from the antisolar point, so that is where this
             // one goes. Placing it by eye instead would sit wrong against the sun every time.
+            // A real rainbow sits 42 degrees from the antisolar point, which at this field of view
+            // fills most of the sky and reads as a vague wash. Pulled in to 26 degrees it is a
+            // clear arc you actually notice.
             float ang = degrees(acos(clamp(dot(dir, -sunDirection), -1.0, 1.0)));
-            float t = (ang - 40.0) / 2.8;
+            float t = (ang - 25.0) / 1.7;
             if (t > 0.0 && t < 1.0) {
               // Red outermost, violet innermost, and soft at both edges.
+              // Pushed well past the pastel the raw ramp gives, so the bands actually read as red,
+              // green and violet rather than as a pale smear.
               vec3 bow = spectrum(1.0 - t);
+              bow = pow(bow, vec3(0.55)) * 1.25;
               float strength = sin(t * 3.14159);
               // Fade it out as it reaches the ground, where a rainbow would end.
               float ground = smoothstep(-0.02, 0.06, h);
@@ -448,46 +455,6 @@ export class Viewer {
     this.skyMaterial = material;
     const sky = new THREE.Mesh(new THREE.SphereGeometry(1300, 48, 32), material);
     this.scene.add(sky);
-  }
-
-  /**
-   * A ringed planet, low in the night sky.
-   *
-   * Pure scenery, and deliberately so: the city is a record of somebody's real life, and having
-   * one impossible thing hanging over it keeps the whole scene from reading as a dashboard.
-   */
-  private addPlanet(): void {
-    const group = new THREE.Group();
-
-    const body = new THREE.Mesh(
-      new THREE.SphereGeometry(46, 32, 24),
-      new THREE.MeshStandardMaterial({
-        color: 0x3a2f66,
-        roughness: 0.85,
-        emissive: 0x6a4fb0,
-        emissiveIntensity: 0.4,
-        fog: false,
-      }),
-    );
-
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(60, 96, 96),
-      new THREE.MeshBasicMaterial({
-        color: 0xc9b6ff,
-        transparent: true,
-        opacity: 0.42,
-        side: THREE.DoubleSide,
-        fog: false,
-      }),
-    );
-    // Tilted, because a ring seen exactly edge-on or exactly flat both read as a mistake.
-    ring.rotation.x = Math.PI / 2 - 0.42;
-    ring.rotation.y = 0.24;
-
-    group.add(body, ring);
-    group.renderOrder = -1;
-    this.planet = group;
-    this.scene.add(group);
   }
 
   private addNightLights(): void {
@@ -585,18 +552,6 @@ export class Viewer {
     }
 
     for (const layer of this.starLayers) layer.visible = !day;
-
-    if (this.planet) {
-      // Night only, and on the far side from the moon so they do not crowd each other.
-      this.planet.visible = night;
-      const far = Math.max(this.fitDistance, 220);
-      this.planet.position.set(
-        this.skyOrigin.x + far * 1.5,
-        far * 0.62,
-        this.skyOrigin.z - far * 1.1,
-      );
-      this.planet.scale.setScalar(far / 260);
-    }
 
     // The lighting is kept close to neutral even at sunset. Warm light on warm facades tips the
     // whole city yellow and every building loses its own colour.
