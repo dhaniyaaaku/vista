@@ -8,12 +8,29 @@
   <body>
     <div id="app">
       <canvas id="view"></canvas>
+
+      <header id="topbar">
+        <div id="brand">
+          <span id="brand-name">Vista</span>
+          <span id="brand-sub"></span>
+        </div>
+        <div id="topbar-actions">
+          <button id="log-win" type="button" class="btn btn--primary">Log a win</button>
+          <button id="open-commitments" type="button" class="btn">Commitments</button>
+          <button id="open-settings" type="button" class="btn btn--icon" aria-label="Settings">
+            &#8942;
+          </button>
+        </div>
+      </header>
+
       <div id="controls">
         <label for="scrub">As of</label>
         <input id="scrub" type="range" min="0" max="182" value="182" />
         <span id="scrub-date"></span>
         <button id="daynight" type="button" aria-pressed="false">Day</button>
       </div>
+
+      <div id="panel-root"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

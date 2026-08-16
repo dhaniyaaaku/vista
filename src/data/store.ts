@@ -177,6 +177,18 @@ export async function exportCity(): Promise<string> {
   return JSON.stringify({ version: DB_VERSION, exportedAt: now(), ...city }, null, 2);
 }
 
+/** Deletes everything in this browser. Only ever called from an explicit, confirmed user action. */
+export async function wipeCity(): Promise<void> {
+  const database = await db();
+  const tx = database.transaction(['entries', 'commitments', 'logs'], 'readwrite');
+  await Promise.all([
+    tx.objectStore('entries').clear(),
+    tx.objectStore('commitments').clear(),
+    tx.objectStore('logs').clear(),
+  ]);
+  await tx.done;
+}
+
 export async function importCity(json: string): Promise<void> {
   const parsed = JSON.parse(json) as Partial<CityData>;
   const database = await db();
