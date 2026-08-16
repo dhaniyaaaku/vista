@@ -160,7 +160,8 @@ if (params.has('islands')) {
     const asOf = addDays(first, Number(scrub.value));
     scrubDate.textContent = formatLongDate(asOf);
 
-    viewer.setLayout(layoutIslands(city, asOf));
+    const layout = layoutIslands(city, asOf);
+    viewer.setLayout(layout);
 
     // Framed once against the finished city, so scrubbing back never yanks the camera. Reframed
     // only when the city changes shape enough to warrant it.
@@ -172,6 +173,45 @@ if (params.has('islands')) {
     hovered = null;
     card.hide();
     paintBrand();
+    paintYears(layout);
+  }
+
+  /**
+   * Year buttons down the left edge.
+   *
+   * Clicking one flies to that island so it fills the frame; "All" pulls back to the whole chain.
+   * The flight is animated because a cut would lose all sense of which island you moved to.
+   */
+  const yearBar = document.querySelector<HTMLDivElement>('#years')!;
+  let focusedYear: string | null = null;
+
+  function paintYears(layout: ReturnType<typeof layoutIslands>): void {
+    yearBar.innerHTML = '';
+    if (layout.islands.length === 0) return;
+
+    const all = document.createElement('button');
+    all.type = 'button';
+    all.textContent = 'All';
+    all.classList.toggle('is-focused', focusedYear === null);
+    all.addEventListener('click', () => {
+      focusedYear = null;
+      viewer.frameCity(layoutIslands(city, todayISO()));
+      paintYears(layout);
+    });
+    yearBar.appendChild(all);
+
+    for (const island of layout.islands) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = island.year;
+      button.classList.toggle('is-focused', focusedYear === island.year);
+      button.addEventListener('click', () => {
+        focusedYear = island.year;
+        viewer.focusIsland(island);
+        paintYears(layout);
+      });
+      yearBar.appendChild(button);
+    }
   }
 
   function paintBrand(): void {
@@ -202,8 +242,10 @@ if (params.has('islands')) {
   const raycaster = new THREE.Raycaster();
   // Ground plane. When the cursor is over open street rather than a building, the butterfly
   // drops to just above the ground and flies between the buildings.
-  const cruisePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-  const GROUND_HOVER = 2.6;
+  // Island surfaces sit at y = 0.6, so the cruise plane matches them: over open ground the
+  // butterfly flies at street level between the buildings rather than under the island.
+  const cruisePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.6);
+  const GROUND_HOVER = 2.2;
   const cruisePoint = new THREE.Vector3();
   const desired = new THREE.Vector3(0, 20, 0);
 

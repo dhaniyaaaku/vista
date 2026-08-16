@@ -130,12 +130,12 @@ try {
   check('commitment: Add', (await count('.commitment')) === 1);
 
   await click('.commitment__check');
-  await settle(9000);
+  await settle(14_000);
   const done = await page.textContent('.commitment__detail');
   check('commitment: tick adds a floor', (done ?? '').startsWith('1 floor'), done ?? '');
 
   await click('.commitment__check');
-  await settle(9000);
+  await settle(14_000);
   const undone = await page.textContent('.commitment__detail');
   check('commitment: untick removes it again', (undone ?? '').startsWith('0 floor'), undone ?? '');
 

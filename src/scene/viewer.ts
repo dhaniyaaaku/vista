@@ -55,6 +55,15 @@ export class Viewer {
   private timeOfDay: TimeOfDay = 'night';
   /** Centre of the scene, so sky bodies stay far away rather than landing inside the islands. */
   private skyOrigin = new THREE.Vector3();
+  private planet: THREE.Group | null = null;
+  private flight: {
+    fromPos: THREE.Vector3;
+    toPos: THREE.Vector3;
+    fromTarget: THREE.Vector3;
+    toTarget: THREE.Vector3;
+    elapsed: number;
+    duration: number;
+  } | null = null;
 
   /**
    * Fog range, which has to differ sharply by mode.
@@ -65,13 +74,18 @@ export class Viewer {
    */
   private applyFogRange(): void {
     if (!(this.scene.fog instanceof THREE.Fog)) return;
-    const day = this.timeOfDay === 'day';
-    // Fog now does atmospheric perspective rather than hiding anything: it starts beyond the city,
-    // so the city itself stays crisp, and finishes well before the edge of the ground, so the far
-    // ground has faded to exactly the horizon colour by the time it meets the sky. That is what
-    // makes the horizon a seamless line instead of a visible rim.
-    this.scene.fog.near = this.fitDistance * (day ? 1.8 : 0.9);
-    this.scene.fog.far = this.fitDistance * (day ? 7 : 3);
+    // Clear day has no fog at all — it is meant to be a bright, sharp, cloudless afternoon, and
+    // any haze at all reads as dirt on the lens. Night and sunset keep it for atmosphere: it
+    // starts beyond the city so the city stays crisp, and fades the far water to exactly the
+    // horizon colour so the two meet without a visible rim.
+    if (this.timeOfDay === 'day') {
+      this.scene.fog.near = this.fitDistance * 40;
+      this.scene.fog.far = this.fitDistance * 80;
+      return;
+    }
+    const sunset = this.timeOfDay === 'sunset';
+    this.scene.fog.near = this.fitDistance * (sunset ? 1.8 : 0.9);
+    this.scene.fog.far = this.fitDistance * (sunset ? 7 : 3);
   }
 
   constructor(canvas: HTMLCanvasElement) {
@@ -100,17 +114,21 @@ export class Viewer {
 
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.06;
-    this.controls.autoRotate = true;
-    this.controls.autoRotateSpeed = 0.28;
-    this.controls.minPolarAngle = 0.15;
-    this.controls.maxPolarAngle = Math.PI / 2 - 0.05;
-    this.controls.enablePan = false;
+    this.controls.dampingFactor = 0.08;
+    // No auto-rotate. A map that drifts under the cursor makes precise navigation impossible, and
+    // this is a place to explore rather than a screensaver.
+    this.controls.autoRotate = false;
+    this.controls.minPolarAngle = 0.12;
+    this.controls.maxPolarAngle = Math.PI / 2 - 0.04;
+    // Panning is how you actually move around an archipelago.
+    this.controls.enablePan = true;
+    this.controls.screenSpacePanning = false;
 
     this.addSky();
     this.addNightLights();
     this.addStars();
     this.addMoon();
+    this.addPlanet();
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -218,6 +236,55 @@ export class Viewer {
     this.frameCity(layout);
   }
 
+  /**
+   * Fly to one island so it fills the frame.
+   *
+   * Animated rather than snapped, because a cut loses all sense of where you went — the flight is
+   * what tells you this island is the one next door. Once it lands, navigation is completely
+   * normal again; this only moves the camera.
+   */
+  focusIsland(island: { x: number; z: number; radius: number }): void {
+    const halfFovV = (this.camera.fov * Math.PI) / 360;
+    const halfFovH = Math.atan(Math.tan(halfFovV) * this.camera.aspect);
+    const elevation = 0.62;
+    const r = island.radius * 1.12;
+    const distance = Math.max(
+      r / Math.tan(halfFovH),
+      (r * Math.sin(elevation)) / Math.tan(halfFovV),
+    );
+
+    // Approach from wherever the camera already is, so the flight reads as moving closer rather
+    // than teleporting to a fixed viewpoint.
+    const from = this.camera.position.clone();
+    const bearing = Math.atan2(from.z - island.z, from.x - island.x);
+
+    this.flyTo(
+      new THREE.Vector3(
+        island.x + Math.cos(elevation) * Math.cos(bearing) * distance,
+        Math.sin(elevation) * distance,
+        island.z + Math.cos(elevation) * Math.sin(bearing) * distance,
+      ),
+      new THREE.Vector3(island.x, 4, island.z),
+    );
+
+    this.controls.minDistance = island.radius * 0.16;
+    this.controls.maxDistance = distance * 3.4;
+    this.fitDistance = distance;
+    this.applyFogRange();
+  }
+
+  /** Ease the camera and its target to a new pose over `seconds`. */
+  private flyTo(position: THREE.Vector3, target: THREE.Vector3, seconds = 0.9): void {
+    this.flight = {
+      fromPos: this.camera.position.clone(),
+      toPos: position,
+      fromTarget: this.controls.target.clone(),
+      toTarget: target,
+      elapsed: 0,
+      duration: seconds,
+    };
+  }
+
   onTick(fn: (dt: number, elapsed: number) => void): void {
     this.onFrame.push(fn);
   }
@@ -230,6 +297,17 @@ export class Viewer {
       const elapsed = this.timer.getElapsed();
       if (this.skyMaterial) this.skyMaterial.uniforms.time.value = elapsed;
       for (const fn of this.onFrame) fn(dt, elapsed);
+
+      if (this.flight) {
+        this.flight.elapsed += dt;
+        const t = Math.min(1, this.flight.elapsed / this.flight.duration);
+        // Ease in and out, so the flight starts and settles gently rather than lurching.
+        const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        this.camera.position.lerpVectors(this.flight.fromPos, this.flight.toPos, e);
+        this.controls.target.lerpVectors(this.flight.fromTarget, this.flight.toTarget, e);
+        if (t >= 1) this.flight = null;
+      }
+
       this.controls.update();
       this.composer.render();
     };
@@ -264,8 +342,6 @@ export class Viewer {
         cloudAmount: { value: 0 },
         /** Strength of the rainbow. Day only. */
         rainbow: { value: 0 },
-        /** Strength of the aurora. Night only. */
-        aurora: { value: 1 },
         /** Direction toward the sun, so the rainbow can be placed opposite it. */
         sunDirection: { value: new THREE.Vector3(-0.6, 0.4, -0.5).normalize() },
         time: { value: 0 },
@@ -285,7 +361,6 @@ export class Viewer {
         uniform vec3 cloudColor;
         uniform float cloudAmount;
         uniform float rainbow;
-        uniform float aurora;
         uniform vec3 sunDirection;
         uniform float time;
         varying vec3 vWorldPosition;
@@ -347,23 +422,6 @@ export class Viewer {
             c = mix(c, cloudColor, cover * fade * cloudAmount * 0.8);
           }
 
-          if (aurora > 0.001 && h > 0.0) {
-            // Curtains: noise that varies fast around the horizon and slowly with height, so it
-            // stretches into vertical sheets rather than looking like clouds. Two layers drifting
-            // at different speeds keep it from reading as a single static texture.
-            float az = atan(dir.z, dir.x);
-            float n1 = fbm(vec2(az * 2.6 + time * 0.045, h * 2.2 - time * 0.02));
-            float n2 = fbm(vec2(az * 4.1 - time * 0.03, h * 3.4 + time * 0.015));
-            float curtain = smoothstep(0.50, 0.86, n1) + smoothstep(0.58, 0.92, n2) * 0.6;
-
-            // Confined to a band above the horizon, out before the zenith.
-            float band = smoothstep(0.01, 0.13, h) * (1.0 - smoothstep(0.30, 0.68, h));
-
-            // Green low down shading to violet higher up, which is how they actually appear.
-            vec3 tint = mix(vec3(0.20, 1.0, 0.60), vec3(0.45, 0.40, 1.0), smoothstep(0.05, 0.34, h));
-            c += tint * curtain * band * aurora * 0.4;
-          }
-
           if (rainbow > 0.001 && h > -0.02) {
             // A real rainbow is a ring 42 degrees from the antisolar point, so that is where this
             // one goes. Placing it by eye instead would sit wrong against the sun every time.
@@ -374,8 +432,8 @@ export class Viewer {
               vec3 bow = spectrum(1.0 - t);
               float strength = sin(t * 3.14159);
               // Fade it out as it reaches the ground, where a rainbow would end.
-              float ground = smoothstep(-0.02, 0.10, h);
-              c = mix(c, bow, strength * ground * rainbow * 0.42);
+              float ground = smoothstep(-0.02, 0.06, h);
+              c = mix(c, bow, strength * ground * rainbow * 0.62);
             }
           }
 
@@ -390,6 +448,46 @@ export class Viewer {
     this.skyMaterial = material;
     const sky = new THREE.Mesh(new THREE.SphereGeometry(1300, 48, 32), material);
     this.scene.add(sky);
+  }
+
+  /**
+   * A ringed planet, low in the night sky.
+   *
+   * Pure scenery, and deliberately so: the city is a record of somebody's real life, and having
+   * one impossible thing hanging over it keeps the whole scene from reading as a dashboard.
+   */
+  private addPlanet(): void {
+    const group = new THREE.Group();
+
+    const body = new THREE.Mesh(
+      new THREE.SphereGeometry(46, 32, 24),
+      new THREE.MeshStandardMaterial({
+        color: 0x3a2f66,
+        roughness: 0.85,
+        emissive: 0x6a4fb0,
+        emissiveIntensity: 0.4,
+        fog: false,
+      }),
+    );
+
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(60, 96, 96),
+      new THREE.MeshBasicMaterial({
+        color: 0xc9b6ff,
+        transparent: true,
+        opacity: 0.42,
+        side: THREE.DoubleSide,
+        fog: false,
+      }),
+    );
+    // Tilted, because a ring seen exactly edge-on or exactly flat both read as a mistake.
+    ring.rotation.x = Math.PI / 2 - 0.42;
+    ring.rotation.y = 0.24;
+
+    group.add(body, ring);
+    group.renderOrder = -1;
+    this.planet = group;
+    this.scene.add(group);
   }
 
   private addNightLights(): void {
@@ -454,18 +552,19 @@ export class Viewer {
     // Everything that only distinguishes "lit" from "dark" still works off this.
     const day = !night;
     this.timeOfDay = mode;
-    this.city.setTimeOfDay(night ? 'night' : 'day');
+    this.city.setTimeOfDay(mode);
 
     // Natural daylight: pale haze at the horizon deepening to blue overhead, with a drifting
     // cloud deck. Anything warmer than this tips the whole city yellow.
     const uniforms = this.skyMaterial?.uniforms;
     if (uniforms) {
       if (clear) {
-        // Clear blue: pale haze at the horizon deepening overhead.
-        uniforms.horizonColor.value.setHex(0xdcefff);
-        uniforms.lowColor.value.setHex(0x9fd0f5);
-        uniforms.midColor.value.setHex(0x4e9fe8);
-        uniforms.topColor.value.setHex(0x1a5fc0);
+        // Bright blue, and saturated early: the visible band of sky sits low, so pale stops here
+        // wash the whole thing out to white.
+        uniforms.horizonColor.value.setHex(0x9fd4ff);
+        uniforms.lowColor.value.setHex(0x4aa2ee);
+        uniforms.midColor.value.setHex(0x1f76dd);
+        uniforms.topColor.value.setHex(0x0a4bb5);
         uniforms.cloudColor.value.setHex(0xffffff);
       } else if (sunset) {
         uniforms.horizonColor.value.setHex(0xffd9a0);
@@ -482,11 +581,22 @@ export class Viewer {
       }
       uniforms.cloudAmount.value = night ? 0 : clear ? 0.55 : 1;
       uniforms.rainbow.value = clear ? 1 : 0;
-      uniforms.aurora.value = night ? 1 : 0;
       if (this.moon) uniforms.sunDirection.value.copy(this.moon.position).normalize();
     }
 
     for (const layer of this.starLayers) layer.visible = !day;
+
+    if (this.planet) {
+      // Night only, and on the far side from the moon so they do not crowd each other.
+      this.planet.visible = night;
+      const far = Math.max(this.fitDistance, 220);
+      this.planet.position.set(
+        this.skyOrigin.x + far * 1.5,
+        far * 0.62,
+        this.skyOrigin.z - far * 1.1,
+      );
+      this.planet.scale.setScalar(far / 260);
+    }
 
     // The lighting is kept close to neutral even at sunset. Warm light on warm facades tips the
     // whole city yellow and every building loses its own colour.
@@ -509,7 +619,10 @@ export class Viewer {
       // stays in the sky rather than parked among the islands.
       const far = Math.max(this.fitDistance, 220);
       const o = this.skyOrigin;
-      if (clear) this.moon.position.set(o.x - far * 1.6, far * 2.2, o.z - far * 1.3);
+      // Day sun kept low on purpose. A rainbow is a ring 42 degrees from the *antisolar* point, so
+      // a high sun puts that ring entirely below the horizon and no rainbow can be visible at all.
+      // At roughly 22 degrees the arc clears the horizon and stands in the sky where you want it.
+      if (clear) this.moon.position.set(o.x - far * 2.0, far * 0.82, o.z - far * 1.2);
       else if (sunset) this.moon.position.set(o.x - far * 2.3, far * 0.5, o.z - far * 1.0);
       else this.moon.position.set(o.x - far * 1.3, far * 1.7, o.z - far * 0.95);
       this.moon.scale.setScalar(sunset ? 1.9 : 1.1);

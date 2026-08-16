@@ -19,7 +19,7 @@ import * as THREE from 'three';
  * alive, and the aliveness is supposed to come from the bob and drift layered on top, not from
  * the butterfly being slow to arrive.
  */
-const FOLLOW = 0.28;
+const FOLLOW = 0.62;
 /** Seconds for the landing ease. */
 const LAND_TIME = 0.4;
 
@@ -119,11 +119,12 @@ export class Butterfly {
     this.position.lerp(desired, follow * step);
 
     // Butterflies never fly straight: a slow bob plus a wandering drift, both fading out on
-    // landing so a settled butterfly sits still.
+    // landing so a settled butterfly sits still. Kept small — this is a cursor first, and drift
+    // large enough to notice is drift large enough to make aiming annoying.
     const wander = 1 - this.landAmount;
-    const bob = Math.sin(elapsed * 2.1) * 0.5 * wander;
-    const driftX = Math.sin(elapsed * 0.77 + 1.3) * 0.6 * wander;
-    const driftZ = Math.cos(elapsed * 0.61) * 0.6 * wander;
+    const bob = Math.sin(elapsed * 2.1) * 0.22 * wander;
+    const driftX = Math.sin(elapsed * 0.77 + 1.3) * 0.24 * wander;
+    const driftZ = Math.cos(elapsed * 0.61) * 0.24 * wander;
 
     this.group.position.set(
       this.position.x + driftX,

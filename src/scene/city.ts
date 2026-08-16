@@ -1,7 +1,7 @@
-/**
+﻿/**
  * The 3D city.
  *
- * Everything here is driven from `CityLayout`, which is already verified in 2D — if something
+ * Everything here is driven from `CityLayout`, which is already verified in 2D â€” if something
  * looks wrong on screen, check `?debug2d` first to find out whether it is a layout problem or a
  * render problem.
  *
@@ -45,13 +45,16 @@ import {
   studioGeometry,
   towerGeometry,
   treeGeometry,
+  treePalmGeometry,
+  treeRoundGeometry,
 } from './geometry';
 import { ISLAND_CORE, type IslandLayout } from '../layout/islands';
+import type { TimeOfDay } from './viewer';
 
 /**
  * World height of one skyscraper floor.
  *
- * Stays linear — one completion is one floor, exactly as promised — but small, because eighteen
+ * Stays linear â€” one completion is one floor, exactly as promised â€” but small, because eighteen
  * months of a daily habit is ~450 floors and anything taller turns the tower into a needle that
  * pierces the frame and flattens everything else.
  */
@@ -80,7 +83,7 @@ export interface PickTarget {
   /** For an entry this is its ISO date; for a tower, its floors and cadence. */
   subtitle: string;
   position: THREE.Vector3;
-  /** Top of the structure — where the butterfly lands. */
+  /** Top of the structure â€” where the butterfly lands. */
   top: number;
 }
 
@@ -100,7 +103,7 @@ interface KindSpec {
  * Size classes are as load-bearing as the silhouettes.
  *
  * An earlier pass made everything tall to chase a dense-skyline look, which flattened the whole
- * vocabulary — a nap and a deadline rendered as the same tower. Heights now form a deliberate
+ * vocabulary â€” a nap and a deadline rendered as the same tower. Heights now form a deliberate
  * hierarchy: commitment towers dominate downtown, studios and libraries are mid-rise, and houses,
  * trees and bridges stay genuinely low so they read as what they are.
  */
@@ -149,6 +152,18 @@ const KIND_SPECS: Record<StructureKind, KindSpec> = {
     height: (v) => 2 + v * 1.2,
     float: (v) => 9 + v * 7,
   },
+  treeRound: {
+    geometry: treeRoundGeometry,
+    material: 'nature',
+    footprint: 2.1,
+    height: (v) => 2.6 + v * 2.4,
+  },
+  treePalm: {
+    geometry: treePalmGeometry,
+    material: 'nature',
+    footprint: 1.7,
+    height: (v) => 3.2 + v * 2.6,
+  },
   garden: {
     geometry: flowersGeometry,
     material: 'garden',
@@ -181,6 +196,13 @@ const KIND_SPECS: Record<StructureKind, KindSpec> = {
   },
 };
 
+/** Milestone gems take their colour from the sky they hang in. */
+const MILESTONE_TINTS: Record<string, number> = {
+  night: 0xff5fa8,
+  sunset: 0xff2d1f,
+  day: 0x7a20d8,
+};
+
 /** Each garden kind gets its own green, so a month's reward is distinguishable. */
 const GARDEN_TINTS: Record<string, number> = {
   flowers: 0xff9ec2,
@@ -202,7 +224,7 @@ export class CityScene {
   private windowTexture: THREE.Texture;
   private towerTexture: THREE.Texture;
   private dummy = new THREE.Object3D();
-  private timeOfDay: 'day' | 'night' = 'night';
+  private timeOfDay: TimeOfDay = 'night';
 
   constructor() {
     this.windowTexture = makeWindowTexture();
@@ -243,7 +265,7 @@ export class CityScene {
   }
 
   /** Day or night. Buildings stop glowing and take on daylight surfaces; lamps switch off. */
-  setTimeOfDay(mode: 'day' | 'night'): void {
+  setTimeOfDay(mode: TimeOfDay): void {
     this.timeOfDay = mode;
     this.applyTimeOfDay();
   }
@@ -268,8 +290,13 @@ export class CityScene {
         material.emissiveIntensity = day ? 0 : nightEmissive;
       } else if (key === 'quiet') {
         material.color.setHex(day ? 0x8891a5 : nightColor);
+      } else if (key === 'installation') {
+        // Milestones keep glowing in daylight and change colour with the sky: rose at night,
+        // burning red at sunset, deep violet by day. They are meant to be the first thing the eye
+        // finds in any mode.
+        material.emissive.setHex(MILESTONE_TINTS[this.timeOfDay]);
+        material.emissiveIntensity = day ? nightEmissive * 1.25 : nightEmissive;
       } else {
-        // Installations keep glowing in daylight — a milestone should still announce itself.
         material.emissiveIntensity = day ? nightEmissive * 0.7 : nightEmissive;
       }
     }
@@ -305,7 +332,7 @@ export class CityScene {
     // Water runs far enough to reach what reads as the true horizon.
     //
     // A surface only a little larger than the archipelago ends well short of the horizon line, and
-    // the sky dome shows underneath its edge — that is sky at *negative* elevation, where any
+    // the sky dome shows underneath its edge â€” that is sky at *negative* elevation, where any
     // vertical gradient is a single flat colour. Running it out to here, with fog fading it to
     // exactly the horizon colour, puts the visible seam at the real horizon instead.
     const radius = Math.max(layout.radius * 12, 2200);
@@ -390,7 +417,7 @@ export class CityScene {
    * Street lamps along every ring road.
    *
    * Cheap, and the single biggest thing that makes an aerial city read as inhabited rather than as
-   * a field of boxes — it is the streets that tell you people live there.
+   * a field of boxes â€” it is the streets that tell you people live there.
    */
   private buildLamps(layout: IslandLayout): void {
     const matrices: THREE.Matrix4[] = [];
@@ -460,7 +487,7 @@ export class CityScene {
           kind: 'tower',
           commitmentId: tower.commitmentId,
           text: tower.name,
-          subtitle: `${tower.floors} floors · ${tower.cadenceLabel}`,
+          subtitle: `${tower.floors} floors Â· ${tower.cadenceLabel}`,
           position: new THREE.Vector3(tower.x, 0, tower.z),
           top,
         },
@@ -494,7 +521,11 @@ export class CityScene {
 
     // Consistency rewards: trees for a full week, a garden for a month kept up with.
     for (const reward of layout.rewards) {
-      const kind: StructureKind = reward.kind === 'tree' ? 'park' : 'garden';
+      // Three tree shapes, chosen from the reward's own noise so a stretch of greenery is mixed
+      // rather than a stand of identical cones.
+      const treeKind: StructureKind =
+        reward.variation < 0.42 ? 'park' : reward.variation < 0.78 ? 'treeRound' : 'treePalm';
+      const kind: StructureKind = reward.kind === 'tree' ? treeKind : 'garden';
       const spec = KIND_SPECS[kind];
       const height = spec.height(reward.variation);
       const width = spec.footprint * (0.85 + reward.variation * 0.3);
@@ -510,7 +541,7 @@ export class CityScene {
           subtitle:
             reward.kind === 'tree'
               ? 'Seven days in a row'
-              : `${reward.gardenKind ?? 'garden'} · earned in ${reward.monthKey}`,
+              : `${reward.gardenKind ?? 'garden'} Â· earned in ${reward.monthKey}`,
           position: new THREE.Vector3(reward.x, 0, reward.z),
           top: 0.6 + height,
         },

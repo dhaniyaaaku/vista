@@ -105,6 +105,47 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+#years {
+  position: absolute;
+  left: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 14;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#years button {
+  appearance: none;
+  cursor: pointer;
+  min-width: 74px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(18, 16, 30, 0.66);
+  backdrop-filter: blur(12px);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-align: left;
+  transition: all 160ms ease;
+}
+
+#years button:hover {
+  color: var(--ink);
+  border-color: rgba(255, 255, 255, 0.34);
+  transform: translateX(2px);
+}
+
+#years button.is-focused {
+  background: linear-gradient(135deg, #ff9ec2, #c79bf5);
+  border-color: transparent;
+  color: #2a1020;
+  font-weight: 600;
+}
+
 #timeofday {
   display: flex;
   gap: 2px;

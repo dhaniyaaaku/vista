@@ -24,6 +24,8 @@ export type StructureKind =
   | 'library'
   | 'installation'
   // Earned or structural, rather than logged: rewards, signage, and year monuments.
+  | 'treeRound'
+  | 'treePalm'
   | 'garden'
   | 'billboard'
   | 'monumentSpire'

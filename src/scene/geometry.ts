@@ -61,13 +61,40 @@ export function houseGeometry(): THREE.BufferGeometry {
   return merged([body, roof]);
 }
 
-/** A tree: visible trunk under a conical canopy. */
+/** A conifer: visible trunk under a tall conical canopy. */
 export function treeGeometry(): THREE.BufferGeometry {
   const trunk = new THREE.CylinderGeometry(0.06, 0.08, 0.34, 6);
   trunk.translate(0, -0.33, 0);
   const canopy = new THREE.ConeGeometry(0.36, 0.74, 8);
   canopy.translate(0, 0.13, 0);
   return merged([trunk, canopy]);
+}
+
+/** A broadleaf: a rounded crown on a slimmer trunk. */
+export function treeRoundGeometry(): THREE.BufferGeometry {
+  const trunk = new THREE.CylinderGeometry(0.05, 0.07, 0.46, 6);
+  trunk.translate(0, -0.27, 0);
+  const crown = new THREE.SphereGeometry(0.34, 10, 8);
+  crown.scale(1, 0.86, 1);
+  crown.translate(0, 0.18, 0);
+  return merged([trunk, crown]);
+}
+
+/** A palm: a bare trunk with a spray of fronds. */
+export function treePalmGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const trunk = new THREE.CylinderGeometry(0.045, 0.075, 0.78, 6);
+  trunk.translate(0, -0.11, 0);
+  parts.push(trunk);
+  for (let i = 0; i < 5; i += 1) {
+    const a = (i / 5) * Math.PI * 2;
+    const frond = new THREE.ConeGeometry(0.1, 0.42, 4);
+    frond.rotateZ(Math.PI / 2.6);
+    frond.rotateY(a);
+    frond.translate(Math.cos(a) * 0.19, 0.32, Math.sin(a) * 0.19);
+    parts.push(frond);
+  }
+  return merged(parts);
 }
 
 /**
@@ -108,29 +135,9 @@ export function civicGeometry(): THREE.BufferGeometry {
   return merged([base, cap, lantern]);
 }
 
-/**
- * A milestone installation: a heart, floating and glowing above the city.
- *
- * These mark the wins someone flagged as significant, so they are the one thing in the city that
- * is unmistakably affectionate rather than architectural.
- */
+/** A milestone installation: a faceted gem, floating and glowing above the city. */
 export function installationGeometry(): THREE.BufferGeometry {
-  const shape = new THREE.Shape();
-  // Drawn upside down, then flipped, because a heart's cusp is easiest to describe from the top.
-  shape.moveTo(0, -0.5);
-  shape.bezierCurveTo(0.62, 0.06, 0.42, 0.56, 0, 0.28);
-  shape.bezierCurveTo(-0.42, 0.56, -0.62, 0.06, 0, -0.5);
-
-  const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: 0.3,
-    bevelEnabled: true,
-    bevelSegments: 2,
-    bevelSize: 0.07,
-    bevelThickness: 0.07,
-    curveSegments: 14,
-  });
-  geometry.center();
-  return geometry;
+  return new THREE.OctahedronGeometry(0.5, 0);
 }
 
 /** A billboard for a month not yet built: a panel on two posts. */

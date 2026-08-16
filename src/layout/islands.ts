@@ -18,7 +18,7 @@ import { CATEGORY_BY_ID } from '../data/types';
 import { monthKey, todayISO } from '../data/dates';
 import { floorsFor, isLit, lastLogDate } from '../data/cadence';
 import { rewardsFor, type MonthReward } from '../data/rewards';
-import { rngFor } from '../util/random';
+import { mulberry32, hashString, rngFor } from '../util/random';
 import { PLOT, TOWER_SPACING, type Placement, type TowerPlacement } from './polar';
 
 const TAU = Math.PI * 2;
@@ -282,16 +282,23 @@ export function layoutIslands(city: CityData, asOf: string = todayISO()): Island
       const reward = rewardByMonth.get(key);
       if (reward) {
         const mid = (startAngle + endAngle) / 2;
+        // Trees scatter across the whole sector rather than lining its edge. A neat arc of them
+        // reads as fencing; scattered, they read as the place having grown some greenery.
+        const rng = mulberry32(hashString(`trees-${key}`));
+        // Kept out of the built rows nearer the centre, so they fill the open ground instead.
+        const inner = ISLAND_CORE + (ISLAND_RADIUS - ISLAND_CORE) * 0.34;
         for (let t = 0; t < reward.trees; t += 1) {
-          const a = mid + (t - (reward.trees - 1) / 2) * (sectorSpan * 0.1);
-          const r = ISLAND_RADIUS * 0.86;
+          const a = startAngle + rng() * (endAngle - startAngle);
+          // sqrt keeps them evenly spread by area rather than bunched toward the centre.
+          const r = inner + Math.sqrt(rng()) * (ISLAND_RADIUS * 0.96 - inner);
           rewardPlacements.push({
             kind: 'tree',
             monthKey: key,
             x: center.x + Math.cos(a) * r,
             z: center.z + Math.sin(a) * r,
-            rotation: a,
-            variation: ((t + 1) * 0.37) % 1,
+            rotation: rng() * TAU,
+            // Drives which of the three tree shapes is used, and its height.
+            variation: rng(),
           });
         }
         if (reward.earnedGarden) {
