@@ -546,3 +546,337 @@ body {
   color: #9fd6b0;
   min-height: 1em;
 }
+
+/* --- landing ----------------------------------------------------------- */
+
+.landing {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  padding: clamp(24px, 6vw, 80px);
+  /* Scrim only at the bottom, so the sky the landing camera works so hard to show stays clear. */
+  background: linear-gradient(
+    to top,
+    rgba(6, 4, 14, 0.92) 0%,
+    rgba(6, 4, 14, 0.72) 32%,
+    rgba(6, 4, 14, 0.12) 62%,
+    rgba(6, 4, 14, 0) 100%
+  );
+  opacity: 0;
+  transition: opacity 650ms ease;
+}
+
+.landing.is-open {
+  opacity: 1;
+}
+
+.landing__inner {
+  max-width: 34rem;
+  transform: translateY(14px);
+  transition: transform 650ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.landing.is-open .landing__inner {
+  transform: none;
+}
+
+/*
+ * Fraunces carries the whole personality here. Its `SOFT` and `WONK` axes round the terminals and
+ * tilt a few letterforms just off-true, which is what makes it read as warm and a little playful
+ * rather than corporate.
+ */
+.landing__mark {
+  margin: 0 0 2px;
+  font-family: 'Fraunces', ui-serif, Georgia, serif;
+  font-variation-settings: 'SOFT' 90, 'WONK' 1, 'opsz' 144;
+  font-weight: 800;
+  font-size: clamp(76px, 15vw, 168px);
+  line-height: 0.86;
+  letter-spacing: -0.035em;
+  color: #fff4ec;
+  text-shadow: 0 10px 46px rgba(0, 0, 0, 0.42);
+  animation: landing-float 7s ease-in-out infinite;
+}
+
+@keyframes landing-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-0.6deg);
+  }
+  50% {
+    transform: translateY(-9px) rotate(0.4deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing__mark {
+    animation: none;
+  }
+}
+
+.landing__headline {
+  margin: 0 0 34px;
+  font-family: 'Fraunces', ui-serif, Georgia, serif;
+  font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 60;
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(20px, 3.1vw, 36px);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: #ffd9c4;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+.landing__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.landing__how {
+  appearance: none;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  color: #ffe4d4;
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  padding: 6px 2px;
+  border-bottom: 1px solid rgba(255, 228, 212, 0.4);
+  transition: border-color 160ms ease, color 160ms ease;
+}
+
+.landing__how:hover {
+  color: #fff;
+  border-bottom-color: #fff;
+}
+
+/* The heart replaces the tittle on the dotless i. */
+.landing__i {
+  position: relative;
+  display: inline-block;
+}
+
+.landing__heart {
+  position: absolute;
+  left: 50%;
+  top: 0.06em;
+  width: 0.30em;
+  height: 0.30em;
+  transform: translateX(-50%) rotate(-8deg);
+  fill: #ff7fa8;
+  filter: drop-shadow(0 3px 12px rgba(255, 120, 160, 0.75));
+  animation: heart-beat 2.6s ease-in-out infinite;
+}
+
+@keyframes heart-beat {
+  0%,
+  100% {
+    transform: translateX(-50%) rotate(-8deg) scale(1);
+  }
+  14% {
+    transform: translateX(-50%) rotate(-8deg) scale(1.16);
+  }
+  28% {
+    transform: translateX(-50%) rotate(-8deg) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing__heart {
+    animation: none;
+  }
+}
+
+/* Standard, recognisable Google button: a clean light pill with the real mark. */
+.btn-google {
+  appearance: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 24px 13px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 253, 250, 0.96);
+  color: #1f1b24;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: 0 14px 38px rgba(40, 10, 30, 0.34);
+  transition: transform 140ms ease, box-shadow 180ms ease, background 160ms ease;
+}
+
+.btn-google:hover {
+  background: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 18px 46px rgba(40, 10, 30, 0.42);
+}
+
+.btn-google:active {
+  transform: translateY(0);
+}
+
+.btn-google:disabled {
+  opacity: 0.7;
+  cursor: default;
+  transform: none;
+}
+
+.btn-google__g {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+}
+
+/* --- glass panel ------------------------------------------------------- */
+
+/* Light, glassy, pink. Everything inside has to invert from the dark app palette. */
+.panel--glass {
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  /* Near-opaque. Anything more translucent and the dark scene behind drags the pink down to a
+     washed grey, which is the opposite of the intended look. */
+  background:
+    linear-gradient(155deg, #fff7fb 0%, #ffe7f1 46%, #f3e4ff 100%);
+  backdrop-filter: blur(30px) saturate(150%);
+  box-shadow:
+    0 40px 100px rgba(60, 20, 50, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.panel--glass .panel__title {
+  font-family: 'Fraunces', ui-serif, Georgia, serif;
+  font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 48;
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: #43203a;
+}
+
+.panel--glass .panel__close {
+  color: #9a6f8c;
+}
+
+.panel--glass .panel__close:hover {
+  color: #43203a;
+  background: rgba(180, 120, 160, 0.14);
+}
+
+.panel--glass .rule__icon {
+  background: linear-gradient(140deg, #ffb3d0, #d5b0ff);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(200, 110, 160, 0.3);
+}
+
+.panel--glass .rule__title {
+  font-family: 'Fraunces', ui-serif, Georgia, serif;
+  font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 24;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: #43203a;
+}
+
+.panel--glass .rule__body,
+.panel--glass .rule__foot {
+  color: #5f3a55;
+}
+
+.panel--glass .rule__body {
+  font-size: 13px;
+}
+
+.panel--glass .rule__foot {
+  border-top-color: rgba(160, 110, 150, 0.22);
+}
+
+/* --- how it works ------------------------------------------------------ */
+
+.rules {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.rule {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.rule__icon {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(232, 180, 200, 0.14);
+  color: #e8b4c8;
+  font-size: 13px;
+}
+
+.rule__title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.rule__body {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.rule__foot {
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.btn--lg {
+  padding: 12px 22px;
+  font-size: 13px;
+}
+
+.landing__foot {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  letter-spacing: 0.03em;
+  color: #7d8496;
+  max-width: 44ch;
+}
+
+.landing__error {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: #ff9d9d;
+}
+
+.landing__fallback {
+  appearance: none;
+  cursor: pointer;
+  border: 0;
+  padding: 0 0 18px;
+  background: transparent;
+  color: #9aa2b5;
+  font: inherit;
+  font-size: 12.5px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.landing__fallback:hover {
+  color: var(--ink);
+}

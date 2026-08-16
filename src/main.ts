@@ -19,7 +19,14 @@ import { openLogForm } from './ui/logForm';
 import { openCommitments } from './ui/commitments';
 import { openSettings } from './ui/settings';
 import { openAccount } from './ui/account';
-import { currentSession, displayName, isConfigured, onAuthChange } from './data/supabase';
+import { openLanding } from './ui/landing';
+import {
+  currentSession,
+  displayName,
+  isConfigured,
+  onAuthChange,
+  signInWithGoogle,
+} from './data/supabase';
 import { syncCity } from './data/sync';
 import type { Session } from '@supabase/supabase-js';
 import type { PickTarget } from './scene/city';
@@ -248,6 +255,7 @@ if (new URLSearchParams(location.search).has('debug2d')) {
 
   const accountButton = document.querySelector<HTMLButtonElement>('#open-account')!;
   let session: Session | null = await currentSession();
+  let landing: { close: () => void } | null = null;
 
   function paintAccount(): void {
     accountButton.hidden = !isConfigured();
@@ -274,10 +282,17 @@ if (new URLSearchParams(location.search).has('debug2d')) {
     if (signedIn && next) {
       try {
         await syncCity(next.user.id);
-        demo = false;
-        await refresh({ reframe: true });
       } catch (cause) {
         console.warn('Sync after sign-in failed:', cause);
+      }
+      // Closing the landing runs its dismissal callback, which reveals the app, drops the
+      // example, and opens the first-win form if there is nothing built yet.
+      if (landing) {
+        landing.close();
+        landing = null;
+      } else {
+        demo = false;
+        await refresh({ reframe: true });
       }
     }
   });
@@ -305,10 +320,54 @@ if (new URLSearchParams(location.search).has('debug2d')) {
     viewer.setLayout(layoutCity(city, asOf));
   });
 
-  // First run: offer the example rather than an empty plane.
-  if (await isEmpty()) {
+  // --- landing ----------------------------------------------------------
+  //
+  // Shown whenever nobody is signed in. The background is the example city, purely so the scene
+  // has something in it — it is scenery behind the sign-in door, never offered as a destination.
+
+  const topbar = document.querySelector<HTMLElement>('#topbar')!;
+  const controlsBar = document.querySelector<HTMLElement>('#controls')!;
+
+  function revealApp(): void {
+    topbar.style.transition = 'opacity 500ms ease';
+    controlsBar.style.transition = 'opacity 500ms ease';
+    topbar.style.opacity = '1';
+    controlsBar.style.opacity = '1';
+    viewer.restoreAppView(layoutCity(city, todayISO()));
+  }
+
+  // `?local` skips the sign-in door and uses the app purely on-device. It exists for automated
+  // tests and development, which otherwise cannot get past an OAuth redirect. It grants no access
+  // to anything — there is no protected data on this side of the door, only sync.
+  const skipLanding = new URLSearchParams(location.search).has('local');
+
+  if (!session && !skipLanding) {
+    topbar.style.opacity = '0';
+    controlsBar.style.opacity = '0';
+
     demo = true;
-    await refresh({ reframe: true });
-    brandSub.textContent = 'example city — log a win to start your own';
+    await refresh();
+
+    // Sunset behind the landing copy. The low camera is the only framing where the sky is on
+    // screen at all, so the landing forces day mode whatever the app is set to.
+    mode = 'day';
+    viewer.setTimeOfDay(mode);
+    dayNight.textContent = 'Night';
+    viewer.cinematicView(layoutCity(city, todayISO()));
+
+    landing = openLanding({
+      onSignIn: () => signInWithGoogle(),
+      onContinueLocally: async () => {
+        demo = false;
+        await refresh({ reframe: true });
+        revealApp();
+        if (await isEmpty()) {
+          document.querySelector<HTMLButtonElement>('#log-win')!.click();
+        }
+      },
+    });
+  } else if (await isEmpty()) {
+    // Signed in with nothing built yet: go straight to the first win rather than an empty plane.
+    document.querySelector<HTMLButtonElement>('#log-win')!.click();
   }
 }

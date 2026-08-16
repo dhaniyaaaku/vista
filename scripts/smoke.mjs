@@ -14,7 +14,9 @@ const flag = (name, fallback) => {
   const hit = args.find((a) => a.startsWith(`--${name}=`));
   return hit ? hit.split('=').slice(1).join('=') : fallback;
 };
-const url = flag('url', 'http://localhost:5173');
+// ?local skips the sign-in landing, which an automated test cannot get past — it would need a
+// real Google OAuth round-trip.
+const url = `${flag('url', 'http://localhost:5173')}?local=1`;
 
 const results = [];
 const check = (name, passed, detail = '') => {
@@ -37,16 +39,15 @@ page.on('console', (m) => {
 const sub = () => page.textContent('#brand-sub');
 
 try {
-  await page.goto(url, { waitUntil: 'load' });
-  await page.waitForTimeout(4000);
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await page.waitForTimeout(5000);
 
-  // 1. A browser with no data should offer the example rather than an empty plane.
-  check('empty browser shows the example city', (await sub())?.includes('example') ?? false, await sub());
+  // 1. Signed out and skipping the landing puts you in your own city, not the example.
+  check('own city, not the example', (await sub()) === 'nothing built yet', (await sub()) ?? '');
 
-  // 2. Logging a win.
-  await page.evaluate(() => document.querySelector('#log-win').click());
-  await page.waitForSelector('.panel', { timeout: 5000 });
-  check('log form opens', true);
+  // 2. An empty city opens the first-win form by itself rather than showing a bare plane.
+  await page.waitForSelector('.panel', { timeout: 8000 });
+  check('first-win form opens unprompted', true);
 
   const phrase = `smoke test win ${Date.now()}`;
   await page.fill('.input--lead', phrase);

@@ -231,7 +231,14 @@ export class CityScene {
   // --- internals ---------------------------------------------------------
 
   private buildGround(layout: CityLayout): void {
-    const radius = Math.max(layout.radius * 1.6, 45);
+    // Far enough that the ground reaches what reads as the true horizon.
+    //
+    // A ground disc only a little larger than the city ends well short of the horizon line, and
+    // the sky dome shows underneath its edge — that is sky at *negative* elevation, where any
+    // vertical gradient is a single flat colour. It is why a sunset palette looked like a wash no
+    // matter how it was tuned. Running the ground out to here, with fog fading it to exactly the
+    // horizon colour, puts the visible seam at the real horizon instead.
+    const radius = Math.max(layout.radius * 14, 1800);
 
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(radius, 128),

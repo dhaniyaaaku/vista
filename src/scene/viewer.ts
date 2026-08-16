@@ -18,7 +18,14 @@ import { CityScene } from './city';
 import type { CityLayout } from '../layout/polar';
 
 /** Horizon colour. Fog matches it so the outer city dissolves into the sky rather than a wall. */
-const HORIZON = 0x1d0d36;
+/**
+ * Horizon colour.
+ *
+ * Fog is set to exactly this in both modes, which is what makes the horizon work: the ground runs
+ * far past the city and fades into precisely the colour the sky starts at, so the two meet with no
+ * visible seam and the far ground reads as sky rather than as a dark rim.
+ */
+const HORIZON = 0x2a1550;
 
 export class Viewer {
   readonly scene = new THREE.Scene();
@@ -54,10 +61,12 @@ export class Viewer {
   private applyFogRange(): void {
     if (!(this.scene.fog instanceof THREE.Fog)) return;
     const day = this.timeOfDay === 'day';
-    // Daylight fog has to start far beyond the city. At a shallow camera angle the ground plane
-    // runs all the way to the horizon, and anything closer than this washes the whole scene out.
-    this.scene.fog.near = this.fitDistance * (day ? 4 : 0.7);
-    this.scene.fog.far = this.fitDistance * (day ? 12 : 2.4);
+    // Fog now does atmospheric perspective rather than hiding anything: it starts beyond the city,
+    // so the city itself stays crisp, and finishes well before the edge of the ground, so the far
+    // ground has faded to exactly the horizon colour by the time it meets the sky. That is what
+    // makes the horizon a seamless line instead of a visible rim.
+    this.scene.fog.near = this.fitDistance * (day ? 1.8 : 0.9);
+    this.scene.fog.far = this.fitDistance * (day ? 7 : 3);
   }
 
   constructor(canvas: HTMLCanvasElement) {
@@ -123,7 +132,11 @@ export class Viewer {
     // about two pixels, which no amount of lighting can rescue — the outer rings are better left
     // to fall away into fog, the way a real skyline does.
     const radius = Math.max(layout.radius, 24) * 0.82;
-    const elevation = 0.55; // radians above the horizon, ~32 degrees — a low aerial
+    // The city is the subject, so the default view stays high enough to read it properly. That
+    // means little sky is in frame by default — which is fine. The horizon fix below is what
+    // makes the sunset correct *when you orbit down to it*, rather than forcing every frame to
+    // be a landscape shot at the city's expense.
+    const elevation = 0.52; // radians above the horizon, ~30 degrees
 
     // Distance is derived from the lens rather than guessed, against both screen axes. The city
     // is a disc, so its horizontal extent is the full diameter while its vertical extent is
@@ -150,6 +163,45 @@ export class Viewer {
     // Fog has to follow the framing, or the whole city sits inside it and greys out.
     this.fitDistance = distance;
     this.applyFogRange();
+  }
+
+  /**
+   * Cinematic framing for the landing page.
+   *
+   * Deliberately different from `frameCity`. The app view sits high because the city is the
+   * subject; at that angle the horizon is off-screen and there is nowhere for a sky to be. This
+   * one drops to a low aerial and pitches up, so the skyline sits in the lower third against a
+   * full sunset. Same scene, different lens.
+   */
+  cinematicView(layout: CityLayout): void {
+    const radius = Math.max(layout.radius, 24);
+    const elevation = 0.21; // ~12 degrees — low enough that most of the frame is sky
+
+    const halfFovV = (this.camera.fov * Math.PI) / 360;
+    // Close enough that the skyline has presence. Fitting the whole disc from this low an angle
+    // shrinks the city to a smudge on the horizon.
+    const distance = (radius * 0.62) / Math.tan(halfFovV);
+
+    this.camera.position.set(
+      Math.cos(elevation) * Math.cos(Math.PI * 0.2) * distance,
+      Math.max(18, Math.sin(elevation) * distance),
+      Math.cos(elevation) * Math.sin(Math.PI * 0.2) * distance,
+    );
+    // Aim above the city so the horizon rises into frame and the skyline drops low.
+    this.controls.target.set(0, radius * 0.26, 0);
+    this.controls.minDistance = radius * 0.35;
+    this.controls.maxDistance = distance * 1.6;
+    this.controls.autoRotateSpeed = 0.16;
+    this.controls.update();
+
+    this.fitDistance = distance;
+    this.applyFogRange();
+  }
+
+  /** Restore the ordinary app framing after the landing page is dismissed. */
+  restoreAppView(layout: CityLayout): void {
+    this.controls.autoRotateSpeed = 0.28;
+    this.frameCity(layout);
   }
 
   onTick(fn: (dt: number, elapsed: number) => void): void {
@@ -245,12 +297,11 @@ export class Viewer {
           vec3 dir = normalize(vWorldPosition);
           float h = dir.y;
 
-          // The whole gradient is compressed into roughly h in [0, 0.32]. At this camera
-          // elevation that narrow band is all of the sky actually on screen, so spreading the
-          // stops over the full dome shows nothing but the palest one.
-          vec3 c = mix(horizonColor, lowColor, smoothstep(-0.015, 0.05, h));
-          c = mix(c, midColor, smoothstep(0.035, 0.14, h));
-          c = mix(c, topColor, smoothstep(0.12, 0.34, h));
+          // Four stops across the lower half of the dome. The camera now looks at the horizon, so
+          // the visible band is roughly h in [0, 0.5] and the stops can spread out properly.
+          vec3 c = mix(horizonColor, lowColor, smoothstep(0.0, 0.06, h));
+          c = mix(c, midColor, smoothstep(0.05, 0.22, h));
+          c = mix(c, topColor, smoothstep(0.20, 0.60, h));
 
           if (cloudAmount > 0.001 && h > 0.0) {
             // Project the view direction onto a flat deck overhead, so clouds compress toward
@@ -341,10 +392,10 @@ export class Viewer {
     // cloud deck. Anything warmer than this tips the whole city yellow.
     const uniforms = this.skyMaterial?.uniforms;
     if (uniforms) {
-      uniforms.horizonColor.value.setHex(day ? 0xffb765 : HORIZON);
-      uniforms.lowColor.value.setHex(day ? 0xf9683f : HORIZON);
-      uniforms.midColor.value.setHex(day ? 0xb2478c : 0x0d0722);
-      uniforms.topColor.value.setHex(day ? 0x172a72 : 0x03030a);
+      uniforms.horizonColor.value.setHex(day ? 0xffd9a0 : HORIZON);
+      uniforms.lowColor.value.setHex(day ? 0xff8b4d : HORIZON);
+      uniforms.midColor.value.setHex(day ? 0xc2508a : 0x0d0722);
+      uniforms.topColor.value.setHex(day ? 0x1a2a6e : 0x03030a);
       uniforms.cloudColor.value.setHex(day ? 0xffd2c0 : 0xffffff);
       uniforms.cloudAmount.value = day ? 1 : 0;
     }

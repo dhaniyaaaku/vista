@@ -23,7 +23,7 @@ export function openAccount(actions: AccountActions): void {
     title: session ? 'Your account' : 'Sign in',
     subtitle: session
       ? 'Your city is backed up and follows you between devices.'
-      : 'Optional. Vista works without an account — signing in just means your city is not stuck in this one browser.',
+      : 'Optional. Vista works without an account. Signing in just means your city is not stuck in this one browser.',
   });
 
   const wrap = document.createElement('div');
@@ -37,7 +37,7 @@ export function openAccount(actions: AccountActions): void {
     const unavailable = document.createElement('p');
     unavailable.className = 'empty';
     unavailable.textContent =
-      'Accounts are not configured for this build. Your city lives in this browser only — use Settings to download a backup.';
+      'Accounts are not configured for this build. Your city lives in this browser only, so use Settings to download a backup.';
     wrap.appendChild(unavailable);
     panel.body.appendChild(wrap);
     return;

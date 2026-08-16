@@ -9,6 +9,8 @@
 export interface PanelOptions {
   title: string;
   subtitle?: string;
+  /** Extra class on the card, for panels that want their own look. */
+  variant?: string;
   /** Called after the panel closes, whatever closed it. */
   onClose?: () => void;
 }
@@ -26,7 +28,7 @@ export class Panel {
     this.previouslyFocused = document.activeElement as HTMLElement | null;
 
     this.root.className = 'panel-backdrop';
-    this.card.className = 'panel';
+    this.card.className = options.variant ? `panel ${options.variant}` : 'panel';
     this.card.setAttribute('role', 'dialog');
     this.card.setAttribute('aria-modal', 'true');
     this.card.setAttribute('aria-label', options.title);
